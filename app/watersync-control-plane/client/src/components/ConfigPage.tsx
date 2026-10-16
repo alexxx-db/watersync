@@ -449,7 +449,7 @@ function DiscoveryDialog({
             targetTableFqn: draft.targetFqn,
             ingestionType,
             keyColumns: draft.keyColumn === 'none' ? null : draft.keyColumn,
-            watermarkColumn: epicCsa || draft.watermarkColumn === 'none' ? null : draft.watermarkColumn,
+            watermarkColumn: !usesWatermark || draft.watermarkColumn === 'none' ? null : draft.watermarkColumn,
             partitionColumn: draft.partitionColumn === 'none' ? null : draft.partitionColumn,
             predicateColumn: draft.predicateColumn === 'none' ? null : draft.predicateColumn,
             epicCsaEnabled: epicCsa,
@@ -524,12 +524,15 @@ function DiscoveryDialog({
       }))
     );
   };
+  // Only timestamp-watermark incremental loads read a watermark; the inferred column is kept in the draft so it
+  // comes back if the user switches to that mode again.
+  const usesWatermark = ingestionType === 'incremental' && !epicCsa;
   const draftValid = (draft: TableDraft) =>
     Boolean(
       draft.targetFqn &&
         (ingestionType === 'full'
           ? !autoCdcFromSnapshot || (draft.stagingFqn && draft.keyColumn !== 'none')
-          : draft.keyColumn !== 'none' && (epicCsa || draft.watermarkColumn !== 'none'))
+          : draft.keyColumn !== 'none' && (!usesWatermark || draft.watermarkColumn !== 'none'))
     );
   const reviewPageCount = Math.ceil(drafts.length / 10);
   const reviewPageStart = reviewPage * 10;
@@ -1017,10 +1020,10 @@ function DiscoveryDialog({
                         <ColumnSelect
                           id={`watermark-column-${index}`}
                           label="Watermark column"
-                          value={draft.watermarkColumn}
+                          value={usesWatermark ? draft.watermarkColumn : 'none'}
                           columns={draft.columns}
                           onChange={(value) => updateDraft(index, { watermarkColumn: value })}
-                          disabled={ingestionType === 'full' || epicCsa}
+                          disabled={!usesWatermark}
                         />
                         <ColumnSelect
                           id={`partition-column-${index}`}
@@ -1150,6 +1153,7 @@ function ConfigDialog({
   useEffect(() => setIngestionType(row?.ingestion_type ?? 'incremental'), [row, open]);
   useEffect(() => setEpicCsa(toBool(row?.epic_csa_enabled)), [row, open]);
   const csaMode = ingestionType === 'incremental' && epicCsa;
+  const usesWatermark = ingestionType === 'incremental' && !epicCsa;
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -1168,7 +1172,7 @@ function ConfigDialog({
           targetTableFqn: f.get('target_fqn'),
           ingestionType: f.get('type'),
           keyColumns: f.get('keys') || null,
-          watermarkColumn: csaMode ? null : f.get('watermark') || null,
+          watermarkColumn: usesWatermark ? f.get('watermark') || null : null,
           partitionColumn: f.get('partition') || null,
           predicateColumn: f.get('predicate') || null,
           epicCsaEnabled: csaMode,
@@ -1258,12 +1262,18 @@ function ConfigDialog({
               <div className="grid gap-4 md:grid-cols-2">
                 <Field name="keys" label="Key columns" value={row?.key_columns} />
                 <Field
-                  key={`watermark-${csaMode}`}
+                  key={`watermark-${usesWatermark}`}
                   name="watermark"
                   label="Watermark column"
-                  value={csaMode ? '' : row?.watermark_column}
-                  disabled={csaMode}
-                  hint={csaMode ? 'EPIC CSA tracks changes by sequence, so no watermark column is used.' : undefined}
+                  value={usesWatermark ? row?.watermark_column : ''}
+                  disabled={!usesWatermark}
+                  hint={
+                    csaMode
+                      ? 'EPIC CSA tracks changes by sequence, so no watermark column is used.'
+                      : !usesWatermark
+                        ? 'Full loads read the whole table, so no watermark column is used.'
+                        : undefined
+                  }
                 />
                 <Field name="partition" label="Partition column" value={row?.partition_column} />
                 <Field name="predicate" label="Predicate column" value={row?.predicate_column} />

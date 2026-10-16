@@ -364,7 +364,8 @@ class JdbcIngestionWorker(ABC):
         writer.saveAsTable(self.write_table_fqn)
 
         max_watermark = None
-        if self.config.watermark_column:
+        # Full loads read the whole table, so a configured watermark column is not used.
+        if self.config.ingestion_type == "incremental" and self.config.watermark_column:
             max_watermark = (
                 self.spark.table(self.write_table_fqn)
                 .select(F.max(F.col(self.config.watermark_column)).alias("max_wm"))

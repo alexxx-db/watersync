@@ -63,7 +63,10 @@ export function registerConfigRoutes(app: Application) {
           parameter('target_table_fqn', body.targetTableFqn),
           parameter('ingestion_type', body.ingestionType),
           parameter('key_columns', body.keyColumns),
-          parameter('watermark_column', body.epicCsaEnabled ? null : body.watermarkColumn),
+          parameter(
+            'watermark_column',
+            body.ingestionType === 'incremental' && !body.epicCsaEnabled ? body.watermarkColumn : null
+          ),
           parameter('partition_column', body.partitionColumn),
           parameter('predicate_column', body.predicateColumn),
           parameter('epic_csa_enabled', String(body.epicCsaEnabled), 'BOOLEAN'),
