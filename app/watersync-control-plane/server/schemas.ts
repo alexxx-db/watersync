@@ -154,16 +154,48 @@ export const computeSchema = z
       });
     }
   });
+export const pipelineComputeSchema = z
+  .object({
+    mode: z.enum(['SERVERLESS', 'CLASSIC']),
+    nodeTypeId: z.string().trim().optional().default(''),
+    driverNodeTypeId: z.string().trim().optional().default(''),
+    minWorkers: z.number().int().min(0).optional().default(1),
+    maxWorkers: z.number().int().min(1).optional().default(4),
+    photon: z.boolean().optional().default(false),
+  })
+  .superRefine((value, context) => {
+    if (value.mode !== 'CLASSIC') return;
+    for (const [field, fieldValue] of [
+      ['nodeTypeId', value.nodeTypeId],
+      ['driverNodeTypeId', value.driverNodeTypeId],
+    ] as const) {
+      if (!fieldValue) context.addIssue({ code: 'custom', path: [field], message: 'Required for classic pipeline compute' });
+    }
+    if (value.maxWorkers < value.minWorkers) {
+      context.addIssue({
+        code: 'custom',
+        path: ['maxWorkers'],
+        message: 'Maximum workers must be at least the minimum',
+      });
+    }
+  });
 export const jobPayloadSchema = locationSchema.extend({
   ingestionGroup: z.string().min(1),
   gitUrl: z.url().refine((value) => new URL(value).hostname === 'github.com', 'Repository must be hosted on GitHub'),
-  gitBranch: z.string().trim().min(1),
+  gitBranch: z
+    .string()
+    .trim()
+    .min(1)
+    // The branch ends up in a pip requirement (and a %pip line for classic pipelines).
+    .regex(/^[^\s"'`\\]+$/, 'Branch must not contain whitespace, quotes or backslashes'),
   foreachConcurrency: z.number().int().min(1).max(100),
   cdcPipelineId: z.string().trim().nullable().optional(),
   schedule: scheduleSchema,
   compute: computeSchema,
+  pipelineCompute: pipelineComputeSchema.prefault({ mode: 'SERVERLESS' }),
 });
 export const jobSchedulePayloadSchema = scheduleSchema.extend({ jobId: z.number().int().positive() });
 
 export type SourceDiscovery = z.infer<typeof sourceDiscoverySchema>;
 export type SourceDatabaseType = z.infer<typeof sourceDatabaseType>;
+export type PipelineCompute = z.infer<typeof pipelineComputeSchema>;

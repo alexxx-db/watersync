@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  Switch,
   Tabs,
   TabsContent,
   TabsList,
@@ -297,16 +298,18 @@ function JobDialog({
   const [computeMode, setComputeMode] = useState<'SERVERLESS' | 'JOB_CLUSTER'>('SERVERLESS');
   const [performanceTarget, setPerformanceTarget] = useState<'STANDARD' | 'PERFORMANCE_OPTIMIZED'>('STANDARD');
   const [tab, setTab] = useState('job');
+  const [pipelineComputeMode, setPipelineComputeMode] = useState<'SERVERLESS' | 'CLASSIC'>('SERVERLESS');
+  const [pipelinePhoton, setPipelinePhoton] = useState(false);
   const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(
     null
   );
   useEffect(() => {
-    if (!open || computeMode !== 'JOB_CLUSTER' || nodeTypes) return;
+    if (!open || (computeMode !== 'JOB_CLUSTER' && pipelineComputeMode !== 'CLASSIC') || nodeTypes) return;
     // Best effort: without the list the node type fields stay empty and must be filled in manually.
     api<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null }>('/api/node-types')
       .then(setNodeTypes)
       .catch(() => setNodeTypes({ nodeTypeIds: [], defaultNodeTypeId: null }));
-  }, [open, computeMode, nodeTypes]);
+  }, [open, computeMode, pipelineComputeMode, nodeTypes]);
   // Inactive tabs are hidden, so the browser cannot focus an invalid field there and blocks the submit
   // silently. Reveal the tab holding the first invalid field and say what is missing.
   const revealInvalidField = (event: FormEvent<HTMLFormElement>) => {
@@ -352,6 +355,17 @@ function JobDialog({
             minWorkers: Number(form.get('minWorkers') ?? 1),
             maxWorkers: Number(form.get('maxWorkers') ?? 4),
           },
+          pipelineCompute:
+            pipelineComputeMode === 'CLASSIC'
+              ? {
+                  mode: pipelineComputeMode,
+                  nodeTypeId: formString(form, 'pipelineNodeTypeId', ''),
+                  driverNodeTypeId: formString(form, 'pipelineDriverNodeTypeId', ''),
+                  minWorkers: Number(form.get('pipelineMinWorkers') ?? 1),
+                  maxWorkers: Number(form.get('pipelineMaxWorkers') ?? 4),
+                  photon: pipelinePhoton,
+                }
+              : { mode: pipelineComputeMode },
         }),
       });
       alert(`Job ${result.jobId} ${result.action}`);
@@ -378,6 +392,9 @@ function JobDialog({
         >
           {error && <ErrorState message={error} />}
           {groupsError && <ErrorState message={groupsError} />}
+          <datalist id="node-type-options">
+            {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
+          </datalist>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className={`grid w-full ${computeMode === 'JOB_CLUSTER' ? 'grid-cols-5' : 'grid-cols-4'}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
@@ -554,6 +571,92 @@ function JobDialog({
                     </p>
                   </div>
                 )}
+                {selectedGroup?.enabled_incremental_source_count ? (
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="pipeline-compute-mode">CDC pipeline compute</Label>
+                      <Select
+                        value={pipelineComputeMode}
+                        onValueChange={(value) => setPipelineComputeMode(value as typeof pipelineComputeMode)}
+                      >
+                        <SelectTrigger id="pipeline-compute-mode" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SERVERLESS">Serverless</SelectItem>
+                          <SelectItem value="CLASSIC">Classic autoscaling cluster</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Applies to the CDC pipeline WaterSync creates or updates for this group. It is ignored when an
+                        existing CDC pipeline ID is provided.
+                      </p>
+                    </div>
+                    {pipelineComputeMode === 'CLASSIC' && (
+                      <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
+                      <Input
+                        key={`pipeline-worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                        id="pipeline-node-type"
+                        name="pipelineNodeTypeId"
+                        list="node-type-options"
+                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
+                      <Input
+                        key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                        id="pipeline-driver-node-type"
+                        name="pipelineDriverNodeTypeId"
+                        list="node-type-options"
+                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                        required
+                      />
+                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
+                          <Input
+                            id="pipeline-min-workers"
+                            name="pipelineMinWorkers"
+                            type="number"
+                            min="0"
+                            defaultValue="1"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
+                          <Input
+                            id="pipeline-max-workers"
+                            name="pipelineMaxWorkers"
+                            type="number"
+                            min="1"
+                            defaultValue="4"
+                            required
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 md:col-span-2">
+                          <Switch
+                            id="pipeline-photon"
+                            checked={pipelinePhoton}
+                            onCheckedChange={setPipelinePhoton}
+                            aria-label="Use Photon for the CDC pipeline"
+                          />
+                          <Label htmlFor="pipeline-photon">Use Photon</Label>
+                        </div>
+                        <p className="text-xs text-muted-foreground md:col-span-2">
+                          Classic pipelines run on the Advanced edition and install WaterSync from the Git source with
+                          %pip when the pipeline starts.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </TabsContent>
             {computeMode === 'JOB_CLUSTER' && (
@@ -592,9 +695,6 @@ function JobDialog({
                       placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
                       required
                     />
-                    <datalist id="node-type-options">
-                      {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
-                    </datalist>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="min-workers">Minimum workers</Label>

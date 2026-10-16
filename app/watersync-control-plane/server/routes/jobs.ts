@@ -97,6 +97,7 @@ export function registerJobRoutes(app: Application) {
             ingestionGroup: body.ingestionGroup,
             gitUrl: body.gitUrl,
             gitBranch: body.gitBranch,
+            compute: body.pipelineCompute,
           })
         : undefined;
       const name = `[${body.ingestionGroup}] Ingestion Pipeline`;
