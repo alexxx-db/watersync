@@ -296,7 +296,7 @@ function JobDialog({
   const [gitUrl, setGitUrl] = useState('https://github.com/databricks-industry-solutions/watersync');
   const [gitBranch, setGitBranch] = useState('main');
   const [computeMode, setComputeMode] = useState<'SERVERLESS' | 'JOB_CLUSTER'>('SERVERLESS');
-  const [performanceTarget, setPerformanceTarget] = useState<'STANDARD' | 'PERFORMANCE_OPTIMIZED'>('STANDARD');
+  const [performanceTarget, setPerformanceTarget] = useState<PerformanceTarget>('STANDARD');
   const [tab, setTab] = useState('job');
   const [pipelineComputeMode, setPipelineComputeMode] = useState<'SERVERLESS' | 'CLASSIC'>('SERVERLESS');
   const [pipelinePhoton, setPipelinePhoton] = useState(false);
@@ -411,9 +411,9 @@ function JobDialog({
             <TabsList className={`grid w-full ${tabColumns[tabCount]}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
               <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
-              <TabsTrigger value="compute">Compute</TabsTrigger>
+              <TabsTrigger value="compute">Job Compute</TabsTrigger>
               {computeMode === 'JOB_CLUSTER' && <TabsTrigger value="cluster">Job cluster</TabsTrigger>}
-              {hasCdcPipeline && <TabsTrigger value="pipeline">CDC pipeline</TabsTrigger>}
+              {hasCdcPipeline && <TabsTrigger value="pipeline">SDP Compute</TabsTrigger>}
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="run-as">Run as</TabsTrigger>
             </TabsList>
@@ -510,20 +510,20 @@ function JobDialog({
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="pipeline-id">Existing CDC pipeline ID (optional)</Label>
+                  <Label htmlFor="pipeline-id">Existing SDP pipeline ID (optional)</Label>
                   <Input
                     id="pipeline-id"
                     name="cdcPipelineId"
                     placeholder={
                       selectedGroup?.enabled_incremental_source_count
-                        ? 'Leave blank to create or reuse the group CDC pipeline'
+                        ? 'Leave blank to create or reuse the group SDP pipeline'
                         : 'Not required: this group has no enabled incremental tables'
                     }
                     disabled={!selectedGroup?.enabled_incremental_source_count}
                   />
                   {!selectedGroup?.enabled_incremental_source_count && (
                     <p className="text-xs text-muted-foreground">
-                      The CDC declarative pipeline task will be omitted for this ingestion group.
+                      The SDP pipeline task will be omitted for this ingestion group.
                     </p>
                   )}
                   {Boolean(selectedGroup?.enabled_incremental_source_count) && (
@@ -563,7 +563,7 @@ function JobDialog({
                 {hasCdcPipeline ? (
                   <RunAsFields
                     id="pipeline-run-as"
-                    label="CDC pipeline runs as"
+                    label="SDP runs as"
                     mode={pipelineRunAsMode}
                     onModeChange={setPipelineRunAsMode}
                     principalName="pipelineRunAsPrincipal"
@@ -571,13 +571,13 @@ function JobDialog({
                   />
                 ) : (
                   <p className="self-end text-xs text-muted-foreground">
-                    This group has no CDC pipeline, so only the job identity applies.
+                    This group has no SDP pipeline, so only the job identity applies.
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground md:col-span-2">
-                  The owner is the app service principal that creates the job and pipeline. Running as another user
+                  The owner is the app service principal that creates the job and SDP pipeline. Running as another user
                   requires workspace admin rights for the app; running as another service principal requires the app to
-                  have the Service Principal User role on it. The pipeline setting is ignored when an existing CDC
+                  have the Service Principal User role on it. The SDP setting is ignored when an existing SDP
                   pipeline ID is provided.
                 </p>
               </div>
@@ -597,24 +597,12 @@ function JobDialog({
                   </Select>
                 </div>
                 {computeMode === 'SERVERLESS' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="performance-target">Serverless performance mode</Label>
-                    <Select
-                      value={performanceTarget}
-                      onValueChange={(value) => setPerformanceTarget(value as typeof performanceTarget)}
-                    >
-                      <SelectTrigger id="performance-target" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="STANDARD">Standard</SelectItem>
-                        <SelectItem value="PERFORMANCE_OPTIMIZED">Performance optimized</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Standard favors cost efficiency; performance optimized favors faster startup and execution.
-                    </p>
-                  </div>
+                  <PerformanceTargetField
+                    id="performance-target"
+                    value={performanceTarget}
+                    onChange={setPerformanceTarget}
+                    sharedWith={hasCdcPipeline && pipelineComputeMode === 'SERVERLESS' ? 'SDP Compute' : null}
+                  />
                 )}
               </div>
             </TabsContent>
@@ -622,7 +610,7 @@ function JobDialog({
               <TabsContent value="pipeline" data-tab="pipeline" forceMount className="mt-4 data-[state=inactive]:hidden">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="pipeline-compute-mode">CDC pipeline compute</Label>
+                    <Label htmlFor="pipeline-compute-mode">SDP compute</Label>
                     <Select
                       value={pipelineComputeMode}
                       onValueChange={(value) => setPipelineComputeMode(value as typeof pipelineComputeMode)}
@@ -636,10 +624,18 @@ function JobDialog({
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Applies to the CDC pipeline WaterSync creates or updates for this group. It is ignored when an
-                      existing CDC pipeline ID is provided.
+                      Applies to the SDP pipeline WaterSync creates or updates for this group. It is ignored when an
+                      existing SDP pipeline ID is provided.
                     </p>
                   </div>
+                  {pipelineComputeMode === 'SERVERLESS' && (
+                    <PerformanceTargetField
+                      id="pipeline-performance-target"
+                      value={performanceTarget}
+                      onChange={setPerformanceTarget}
+                      sharedWith={computeMode === 'SERVERLESS' ? 'Job Compute' : null}
+                    />
+                  )}
                   {pipelineComputeMode === 'CLASSIC' && (
                     <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
@@ -679,7 +675,7 @@ function JobDialog({
                           id="pipeline-photon"
                           checked={pipelinePhoton}
                           onCheckedChange={setPipelinePhoton}
-                          aria-label="Use Photon for the CDC pipeline"
+                          aria-label="Use Photon for the SDP pipeline"
                         />
                         <Label htmlFor="pipeline-photon">Use Photon</Label>
                       </div>
@@ -738,7 +734,7 @@ function JobDialog({
                     <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
                   </div>
                   <p className="text-xs text-muted-foreground md:col-span-2">
-                    The planner and ingestion workers share this autoscaling job cluster. The CDC pipeline task uses its
+                    The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its
                     own pipeline compute.
                   </p>
                 </div>
@@ -756,6 +752,40 @@ function JobDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type PerformanceTarget = 'STANDARD' | 'PERFORMANCE_OPTIMIZED';
+
+function PerformanceTargetField({
+  id,
+  value,
+  onChange,
+  sharedWith,
+}: {
+  id: string;
+  value: PerformanceTarget;
+  onChange: (value: PerformanceTarget) => void;
+  sharedWith: string | null;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Serverless performance mode</Label>
+      <Select value={value} onValueChange={(next) => onChange(next as PerformanceTarget)}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="STANDARD">Standard</SelectItem>
+          <SelectItem value="PERFORMANCE_OPTIMIZED">Performance optimized</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Standard favors cost efficiency; performance optimized favors faster startup and execution.
+        {sharedWith &&
+          ` Databricks applies one serverless performance mode per job, so this setting is shared with ${sharedWith}.`}
+      </p>
+    </div>
   );
 }
 

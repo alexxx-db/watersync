@@ -161,12 +161,16 @@ export function registerJobRoutes(app: Application) {
           pipeline_task: { pipeline_id: cdcPipelineId, full_refresh: false },
         });
       }
+      // performance_target is job-wide and applies to every serverless task, including a serverless pipeline task.
+      const serverlessPipelineTask = Boolean(cdcPipelineId) && body.pipelineCompute.mode === 'SERVERLESS';
       const settings: jobs.JobSettings = {
         name,
         max_concurrent_runs: 1,
+        ...(body.compute.mode === 'SERVERLESS' || serverlessPipelineTask
+          ? { performance_target: body.compute.performanceTarget }
+          : {}),
         ...(body.compute.mode === 'SERVERLESS'
           ? {
-              performance_target: body.compute.performanceTarget,
               environments: [
                 {
                   environment_key: environmentKey,
