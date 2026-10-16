@@ -42,16 +42,17 @@ export function registerConfigRoutes(app: Application) {
            auto_cdc_from_snapshot=:auto_cdc_from_snapshot,
            jdbc_url=:jdbc_url, jdbc_user=:jdbc_user, jdbc_secret_scope=:jdbc_secret_scope,
            jdbc_secret_key=:jdbc_secret_key, uc_secret_name=:uc_secret_name, connection_name=:connection_name,
+           connection_database=:connection_database,
            watermark_threshold_minutes=:watermark_threshold_minutes, fetch_size=:fetch_size,
            num_partitions=:num_partitions,
            update_dttm=current_timestamp(), enabled=:enabled
          WHEN NOT MATCHED THEN INSERT (ingestion_group, source_table_name, staging_table_fqn, target_table_fqn,
            ingestion_type, key_columns, watermark_column, partition_column, predicate_column, epic_csa_enabled, auto_cdc_from_snapshot,
-           jdbc_url, jdbc_user, jdbc_secret_scope, jdbc_secret_key, uc_secret_name, connection_name,
+           jdbc_url, jdbc_user, jdbc_secret_scope, jdbc_secret_key, uc_secret_name, connection_name, connection_database,
            watermark_threshold_minutes, fetch_size, num_partitions, update_dttm, enabled)
          VALUES (s.ingestion_group, s.source_table_name, :staging_table_fqn, :target_table_fqn,
            :ingestion_type, :key_columns, :watermark_column, :partition_column, :predicate_column, :epic_csa_enabled, :auto_cdc_from_snapshot,
-           :jdbc_url, :jdbc_user, :jdbc_secret_scope, :jdbc_secret_key, :uc_secret_name, :connection_name,
+           :jdbc_url, :jdbc_user, :jdbc_secret_scope, :jdbc_secret_key, :uc_secret_name, :connection_name, :connection_database,
            :watermark_threshold_minutes, :fetch_size, :num_partitions, current_timestamp(), :enabled)`,
         [
           parameter('original_ingestion_group', body.originalIngestionGroup),
@@ -73,6 +74,8 @@ export function registerConfigRoutes(app: Application) {
           parameter('jdbc_secret_key', body.jdbcSecretKey),
           parameter('uc_secret_name', body.ucSecretName),
           parameter('connection_name', body.connectionName),
+          // The database override only applies to UC connections.
+          parameter('connection_database', body.connectionName ? body.connectionDatabase : null),
           parameter('watermark_threshold_minutes', String(body.watermarkThresholdMinutes), 'INT'),
           parameter('fetch_size', String(body.fetchSize), 'INT'),
           parameter('num_partitions', String(body.numPartitions), 'INT'),

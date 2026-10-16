@@ -27,6 +27,7 @@ export const configSchema = locationSchema
     jdbcSecretKey: z.string().nullable().optional(),
     ucSecretName: z.string().nullable().optional(),
     connectionName: z.string().nullable().optional(),
+    connectionDatabase: z.string().nullable().optional(),
     watermarkThresholdMinutes: z.number().int().nonnegative(),
     fetchSize: z.number().int().positive(),
     numPartitions: z.number().int().positive(),

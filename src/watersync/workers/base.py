@@ -166,6 +166,10 @@ class JdbcIngestionWorker(ABC):
             if not self.config.connection_name:
                 raise ValueError("Either jdbc_url or connection_name is required in the configuration row")
             reader = reader.option("databricks.connection", self.config.connection_name)
+            if self.config.connection_database:
+                # Same option names as remote_query; the connection must allow-list them.
+                database_option = "service_name" if self.sql_dialect == "oracle" else "database"
+                reader = reader.option(database_option, self.config.connection_database)
 
         if (
             partition_column

@@ -460,6 +460,7 @@ function DiscoveryDialog({
             jdbcSecretKey: connectionMode === 'jdbc' ? secretKey : null,
             ucSecretName: connectionMode === 'uc_secret' ? ucSecretName : null,
             connectionName: connectionMode === 'uc' ? connectionName : null,
+            connectionDatabase: connectionMode === 'uc' ? database || null : null,
             watermarkThresholdMinutes: Number(threshold),
             fetchSize: Number(fetchSize),
             numPartitions: Number(partitions),
@@ -678,9 +679,13 @@ function DiscoveryDialog({
                         required
                       />
                     </div>
-                    <p className="self-end pb-2 text-xs text-muted-foreground md:col-span-2 xl:col-span-1">
-                      The source database is defined by the UC connection and cannot be overridden here.
-                    </p>
+                    <ControlledField
+                      id="source-database"
+                      label={databaseType === 'oracle' ? 'Oracle service name (optional)' : 'Database (optional)'}
+                      value={database}
+                      onChange={setDatabase}
+                      hint="Leave empty to use the database defined by the UC connection."
+                    />
                   </>
                 ) : connectionMode === 'uc_secret' ? (
                   <>
@@ -1174,6 +1179,7 @@ function ConfigDialog({
           jdbcSecretKey: f.get('jdbc_secret_key') || null,
           ucSecretName: f.get('uc_secret_name') || null,
           connectionName: f.get('connection_name') || null,
+          connectionDatabase: f.get('connection_database') || null,
           watermarkThresholdMinutes: Number(f.get('watermark_threshold_minutes') || 5),
           fetchSize: Number(f.get('fetch_size') || 10000),
           numPartitions: Number(f.get('num_partitions') || 8),
@@ -1282,6 +1288,12 @@ function ConfigDialog({
                 </div>
                 <Field name="jdbc_user" label="JDBC user" value={row?.jdbc_user} />
                 <Field name="connection_name" label="UC connection name" value={row?.connection_name} />
+                <Field
+                  name="connection_database"
+                  label="UC connection database"
+                  value={row?.connection_database}
+                  hint="Optional. Overrides the database (Oracle: service name) of the UC connection."
+                />
                 <Field name="jdbc_secret_scope" label="JDBC secret scope" value={row?.jdbc_secret_scope} />
                 <Field name="jdbc_secret_key" label="JDBC secret key" value={row?.jdbc_secret_key} />
                 <Field name="uc_secret_name" label="UC secret name" value={row?.uc_secret_name} hint="Format: catalog.schema.secret_name" />
