@@ -328,11 +328,11 @@ function JobDialog({
   }, [open, ingestionGroup, groups]);
   const selectedGroup = groups.find((group) => group.ingestion_group === ingestionGroup);
   const hasCdcPipeline = Boolean(selectedGroup?.enabled_incremental_source_count);
-  const tabCount = 5 + (computeMode === 'JOB_CLUSTER' ? 1 : 0) + (hasCdcPipeline ? 1 : 0);
-  // Leave the conditional tabs when they disappear, e.g. after switching group or compute mode.
+  const tabCount = 5 + (hasCdcPipeline ? 1 : 0);
+  // Leave the SDP Compute tab when it disappears after switching to a group without an SDP pipeline.
   useEffect(() => {
-    if ((tab === 'pipeline' && !hasCdcPipeline) || (tab === 'cluster' && computeMode !== 'JOB_CLUSTER')) setTab('compute');
-  }, [tab, hasCdcPipeline, computeMode]);
+    if (tab === 'pipeline' && !hasCdcPipeline) setTab('compute');
+  }, [tab, hasCdcPipeline]);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -412,7 +412,6 @@ function JobDialog({
               <TabsTrigger value="job">Job configuration</TabsTrigger>
               <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
               <TabsTrigger value="compute">Job Compute</TabsTrigger>
-              {computeMode === 'JOB_CLUSTER' && <TabsTrigger value="cluster">Job cluster</TabsTrigger>}
               {hasCdcPipeline && <TabsTrigger value="pipeline">SDP Compute</TabsTrigger>}
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="run-as">Run as</TabsTrigger>
@@ -604,6 +603,56 @@ function JobDialog({
                     sharedWith={hasCdcPipeline && pipelineComputeMode === 'SERVERLESS' ? 'SDP Compute' : null}
                   />
                 )}
+                {computeMode === 'JOB_CLUSTER' && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="spark-version">Databricks Runtime</Label>
+                      <Input
+                        id="spark-version"
+                        name="sparkVersion"
+                        defaultValue="18.x-scala2.13"
+                        placeholder="18.x-scala2.13"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="driver-node-type">Driver node type</Label>
+                      <Input
+                        key={`driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                        id="driver-node-type"
+                        name="driverNodeTypeId"
+                        list="node-type-options"
+                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="worker-node-type">Worker node type</Label>
+                      <Input
+                        key={`worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                        id="worker-node-type"
+                        name="workerNodeTypeId"
+                        list="node-type-options"
+                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="min-workers">Minimum workers</Label>
+                      <Input id="min-workers" name="minWorkers" type="number" min="0" defaultValue="1" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="max-workers">Maximum workers</Label>
+                      <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
+                    </div>
+                    <p className="text-xs text-muted-foreground md:col-span-2">
+                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its
+                      own pipeline compute.
+                    </p>
+                  </div>
+                )}
               </div>
             </TabsContent>
             {hasCdcPipeline && (
@@ -688,58 +737,6 @@ function JobDialog({
                 </div>
               </TabsContent>
             )}
-            {computeMode === 'JOB_CLUSTER' && (
-              <TabsContent value="cluster" data-tab="cluster" forceMount className="mt-4 data-[state=inactive]:hidden">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="spark-version">Databricks Runtime</Label>
-                    <Input
-                      id="spark-version"
-                      name="sparkVersion"
-                      defaultValue="18.x-scala2.13"
-                      placeholder="18.x-scala2.13"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="driver-node-type">Driver node type</Label>
-                    <Input
-                      key={`driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                      id="driver-node-type"
-                      name="driverNodeTypeId"
-                      list="node-type-options"
-                      defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                      placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="worker-node-type">Worker node type</Label>
-                    <Input
-                      key={`worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                      id="worker-node-type"
-                      name="workerNodeTypeId"
-                      list="node-type-options"
-                      defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                      placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="min-workers">Minimum workers</Label>
-                    <Input id="min-workers" name="minWorkers" type="number" min="0" defaultValue="1" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="max-workers">Maximum workers</Label>
-                    <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
-                  </div>
-                  <p className="text-xs text-muted-foreground md:col-span-2">
-                    The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its
-                    own pipeline compute.
-                  </p>
-                </div>
-              </TabsContent>
-            )}
           </Tabs>
           <p className="text-xs text-muted-foreground">
             If a job with the generated name already exists, its definition is updated in place.
@@ -790,7 +787,7 @@ function PerformanceTargetField({
 }
 
 // Literal class names so Tailwind keeps them.
-const tabColumns: Record<number, string> = { 5: 'grid-cols-5', 6: 'grid-cols-6', 7: 'grid-cols-7' };
+const tabColumns: Record<number, string> = { 5: 'grid-cols-5', 6: 'grid-cols-6' };
 
 function RunAsFields({
   id,
