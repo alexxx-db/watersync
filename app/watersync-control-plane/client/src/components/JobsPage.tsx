@@ -327,6 +327,12 @@ function JobDialog({
     if (open && !ingestionGroup && groups[0]) setIngestionGroup(groups[0].ingestion_group);
   }, [open, ingestionGroup, groups]);
   const selectedGroup = groups.find((group) => group.ingestion_group === ingestionGroup);
+  const hasCdcPipeline = Boolean(selectedGroup?.enabled_incremental_source_count);
+  const tabCount = 5 + (computeMode === 'JOB_CLUSTER' ? 1 : 0) + (hasCdcPipeline ? 1 : 0);
+  // Leave the conditional tabs when they disappear, e.g. after switching group or compute mode.
+  useEffect(() => {
+    if ((tab === 'pipeline' && !hasCdcPipeline) || (tab === 'cluster' && computeMode !== 'JOB_CLUSTER')) setTab('compute');
+  }, [tab, hasCdcPipeline, computeMode]);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -402,11 +408,12 @@ function JobDialog({
             {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
           </datalist>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
-            <TabsList className={`grid w-full ${computeMode === 'JOB_CLUSTER' ? 'grid-cols-6' : 'grid-cols-5'}`}>
+            <TabsList className={`grid w-full ${tabColumns[tabCount]}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
               <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
               <TabsTrigger value="compute">Compute</TabsTrigger>
               {computeMode === 'JOB_CLUSTER' && <TabsTrigger value="cluster">Job cluster</TabsTrigger>}
+              {hasCdcPipeline && <TabsTrigger value="pipeline">CDC pipeline</TabsTrigger>}
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="run-as">Run as</TabsTrigger>
             </TabsList>
@@ -553,7 +560,7 @@ function JobDialog({
                   onModeChange={setJobRunAsMode}
                   principalName="jobRunAsPrincipal"
                 />
-                {selectedGroup?.enabled_incremental_source_count ? (
+                {hasCdcPipeline ? (
                   <RunAsFields
                     id="pipeline-run-as"
                     label="CDC pipeline runs as"
@@ -609,29 +616,32 @@ function JobDialog({
                     </p>
                   </div>
                 )}
-                {selectedGroup?.enabled_incremental_source_count ? (
-                  <div className="space-y-4 border-t pt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="pipeline-compute-mode">CDC pipeline compute</Label>
-                      <Select
-                        value={pipelineComputeMode}
-                        onValueChange={(value) => setPipelineComputeMode(value as typeof pipelineComputeMode)}
-                      >
-                        <SelectTrigger id="pipeline-compute-mode" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SERVERLESS">Serverless</SelectItem>
-                          <SelectItem value="CLASSIC">Classic autoscaling cluster</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Applies to the CDC pipeline WaterSync creates or updates for this group. It is ignored when an
-                        existing CDC pipeline ID is provided.
-                      </p>
-                    </div>
-                    {pipelineComputeMode === 'CLASSIC' && (
-                      <div className="grid gap-4 md:grid-cols-2">
+              </div>
+            </TabsContent>
+            {hasCdcPipeline && (
+              <TabsContent value="pipeline" data-tab="pipeline" forceMount className="mt-4 data-[state=inactive]:hidden">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="pipeline-compute-mode">CDC pipeline compute</Label>
+                    <Select
+                      value={pipelineComputeMode}
+                      onValueChange={(value) => setPipelineComputeMode(value as typeof pipelineComputeMode)}
+                    >
+                      <SelectTrigger id="pipeline-compute-mode" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SERVERLESS">Serverless</SelectItem>
+                        <SelectItem value="CLASSIC">Classic autoscaling cluster</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Applies to the CDC pipeline WaterSync creates or updates for this group. It is ignored when an
+                      existing CDC pipeline ID is provided.
+                    </p>
+                  </div>
+                  {pipelineComputeMode === 'CLASSIC' && (
+                    <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
                       <Input
@@ -644,7 +654,7 @@ function JobDialog({
                         required
                       />
                     </div>
-                    <div className="space-y-2">
+                        <div className="space-y-2">
                       <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
                       <Input
                         key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
@@ -657,46 +667,31 @@ function JobDialog({
                       />
                     </div>
                         <div className="space-y-2">
-                          <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
-                          <Input
-                            id="pipeline-min-workers"
-                            name="pipelineMinWorkers"
-                            type="number"
-                            min="0"
-                            defaultValue="1"
-                            required
-                          />
-                        </div>
+                      <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
+                      <Input id="pipeline-min-workers" name="pipelineMinWorkers" type="number" min="0" defaultValue="1" required />
+                    </div>
                         <div className="space-y-2">
-                          <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
-                          <Input
-                            id="pipeline-max-workers"
-                            name="pipelineMaxWorkers"
-                            type="number"
-                            min="1"
-                            defaultValue="4"
-                            required
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 md:col-span-2">
-                          <Switch
-                            id="pipeline-photon"
-                            checked={pipelinePhoton}
-                            onCheckedChange={setPipelinePhoton}
-                            aria-label="Use Photon for the CDC pipeline"
-                          />
-                          <Label htmlFor="pipeline-photon">Use Photon</Label>
-                        </div>
-                        <p className="text-xs text-muted-foreground md:col-span-2">
-                          Classic pipelines run on the Advanced edition and install WaterSync from the Git source with
-                          %pip when the pipeline starts.
-                        </p>
+                      <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
+                      <Input id="pipeline-max-workers" name="pipelineMaxWorkers" type="number" min="1" defaultValue="4" required />
+                    </div>
+                          <div className="flex items-center gap-2 md:col-span-2">
+                        <Switch
+                          id="pipeline-photon"
+                          checked={pipelinePhoton}
+                          onCheckedChange={setPipelinePhoton}
+                          aria-label="Use Photon for the CDC pipeline"
+                        />
+                        <Label htmlFor="pipeline-photon">Use Photon</Label>
                       </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </TabsContent>
+                      <p className="text-xs text-muted-foreground md:col-span-2">
+                        Classic pipelines run on the Advanced edition and install WaterSync from the Git source with
+                        %pip when the pipeline starts.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            )}
             {computeMode === 'JOB_CLUSTER' && (
               <TabsContent value="cluster" data-tab="cluster" forceMount className="mt-4 data-[state=inactive]:hidden">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -763,6 +758,9 @@ function JobDialog({
     </Dialog>
   );
 }
+
+// Literal class names so Tailwind keeps them.
+const tabColumns: Record<number, string> = { 5: 'grid-cols-5', 6: 'grid-cols-6', 7: 'grid-cols-7' };
 
 function RunAsFields({
   id,
