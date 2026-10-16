@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { jobs } from '@databricks/sdk-experimental';
 import type { Application } from 'express';
-import { jobPayloadSchema, jobSchedulePayloadSchema } from '../schemas.js';
+import { jobPayloadSchema, jobSchedulePayloadSchema, toRunAs } from '../schemas.js';
 import { workspace, workspaceBaseUrl } from '../sql.js';
 import {
   groupNeedsCdcPipeline,
@@ -98,9 +98,11 @@ export function registerJobRoutes(app: Application) {
             gitUrl: body.gitUrl,
             gitBranch: body.gitBranch,
             compute: body.pipelineCompute,
+            runAs: toRunAs(body.runAs.pipeline.mode === 'SAME_AS_JOB' ? body.runAs.job : body.runAs.pipeline),
           })
         : undefined;
       const name = `[${body.ingestionGroup}] Ingestion Pipeline`;
+      const jobRunAs = toRunAs(body.runAs.job);
       const configurationFqn = `${body.catalog}.${body.schema}.jdbc_ingestion_config`;
       const watermarkFqn = `${body.catalog}.${body.schema}.jdbc_ingestion_watermark`;
       const environmentKey = 'watersync_environment';
@@ -195,6 +197,7 @@ export function registerJobRoutes(app: Application) {
           { name: 'full_refresh', default: 'false' },
         ],
         tasks,
+        ...(jobRunAs ? { run_as: jobRunAs } : {}),
         git_source: {
           git_url: body.gitUrl,
           git_provider: 'gitHub',
@@ -229,6 +232,8 @@ export function registerJobRoutes(app: Application) {
         ingestionGroup: body.ingestionGroup,
         cdcPipelineId,
         computeMode: body.compute.mode,
+        jobRunAs: body.runAs.job.mode,
+        pipelineRunAs: body.runAs.pipeline.mode,
       });
       res.json({ jobId, pipelineId: cdcPipelineId, action });
     })

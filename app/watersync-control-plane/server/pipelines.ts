@@ -42,6 +42,7 @@ export async function ensureCdcPipeline(opts: {
   gitUrl: string;
   gitBranch: string;
   compute: PipelineCompute;
+  runAs?: pipelines.RunAs;
 }) {
   if (opts.pipelineId) return opts.pipelineId;
 
@@ -91,6 +92,7 @@ export async function ensureCdcPipeline(opts: {
     },
     libraries: [library],
     channel: 'CURRENT',
+    ...(opts.runAs ? { run_as: opts.runAs } : {}),
     ...(opts.compute.mode === 'CLASSIC'
       ? {
           serverless: false,

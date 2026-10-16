@@ -179,6 +179,34 @@ export const pipelineComputeSchema = z
       });
     }
   });
+const runAsPrincipalIssue = (mode: string, principal: string) => {
+  if (mode === 'USER' && !/^[^\s@]+@[^\s@]+$/.test(principal)) return 'Enter the user email';
+  if (mode === 'SERVICE_PRINCIPAL' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(principal)) {
+    return 'Enter the service principal application ID';
+  }
+  return null;
+};
+// DEFAULT leaves run_as unset so the resource runs as its owner (the app service principal that creates it).
+const runAsTargetSchema = <T extends readonly [string, ...string[]]>(modes: T) =>
+  z
+    .object({ mode: z.enum(modes), principal: z.string().trim().optional().default('') })
+    .superRefine((value, context) => {
+      const issue = runAsPrincipalIssue(value.mode, value.principal);
+      if (issue) context.addIssue({ code: 'custom', path: ['principal'], message: issue });
+    });
+export const runAsSchema = z.object({
+  job: runAsTargetSchema(['DEFAULT', 'USER', 'SERVICE_PRINCIPAL'] as const).prefault({ mode: 'DEFAULT' }),
+  pipeline: runAsTargetSchema(['SAME_AS_JOB', 'DEFAULT', 'USER', 'SERVICE_PRINCIPAL'] as const).prefault({
+    mode: 'SAME_AS_JOB',
+  }),
+});
+export type RunAsTarget = { mode: string; principal: string };
+export const toRunAs = (target: RunAsTarget) =>
+  target.mode === 'USER'
+    ? { user_name: target.principal }
+    : target.mode === 'SERVICE_PRINCIPAL'
+      ? { service_principal_name: target.principal }
+      : undefined;
 export const jobPayloadSchema = locationSchema.extend({
   ingestionGroup: z.string().min(1),
   gitUrl: z.url().refine((value) => new URL(value).hostname === 'github.com', 'Repository must be hosted on GitHub'),
@@ -193,6 +221,7 @@ export const jobPayloadSchema = locationSchema.extend({
   schedule: scheduleSchema,
   compute: computeSchema,
   pipelineCompute: pipelineComputeSchema.prefault({ mode: 'SERVERLESS' }),
+  runAs: runAsSchema.prefault({}),
 });
 export const jobSchedulePayloadSchema = scheduleSchema.extend({ jobId: z.number().int().positive() });
 

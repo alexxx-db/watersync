@@ -300,6 +300,8 @@ function JobDialog({
   const [tab, setTab] = useState('job');
   const [pipelineComputeMode, setPipelineComputeMode] = useState<'SERVERLESS' | 'CLASSIC'>('SERVERLESS');
   const [pipelinePhoton, setPipelinePhoton] = useState(false);
+  const [jobRunAsMode, setJobRunAsMode] = useState('DEFAULT');
+  const [pipelineRunAsMode, setPipelineRunAsMode] = useState('SAME_AS_JOB');
   const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(
     null
   );
@@ -318,7 +320,7 @@ function JobDialog({
     if (event.currentTarget.querySelector(':invalid') !== field) return;
     const fieldTab = field.closest<HTMLElement>('[data-tab]')?.dataset.tab;
     if (fieldTab) setTab(fieldTab);
-    const label = field.labels?.[0]?.textContent ?? field.name;
+    const label = field.labels?.[0]?.textContent ?? field.getAttribute('aria-label') ?? field.name;
     setError(`Check "${label}": ${field.validationMessage}`);
   };
   useEffect(() => {
@@ -366,6 +368,10 @@ function JobDialog({
                   photon: pipelinePhoton,
                 }
               : { mode: pipelineComputeMode },
+          runAs: {
+            job: { mode: jobRunAsMode, principal: formString(form, 'jobRunAsPrincipal', '') },
+            pipeline: { mode: pipelineRunAsMode, principal: formString(form, 'pipelineRunAsPrincipal', '') },
+          },
         }),
       });
       alert(`Job ${result.jobId} ${result.action}`);
@@ -396,12 +402,13 @@ function JobDialog({
             {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
           </datalist>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
-            <TabsList className={`grid w-full ${computeMode === 'JOB_CLUSTER' ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <TabsList className={`grid w-full ${computeMode === 'JOB_CLUSTER' ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
               <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
               <TabsTrigger value="compute">Compute</TabsTrigger>
               {computeMode === 'JOB_CLUSTER' && <TabsTrigger value="cluster">Job cluster</TabsTrigger>}
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
+              <TabsTrigger value="run-as">Run as</TabsTrigger>
             </TabsList>
             <TabsContent value="job" data-tab="job" forceMount className="mt-4 space-y-4 data-[state=inactive]:hidden">
               <div className="space-y-2">
@@ -536,6 +543,37 @@ function JobDialog({
                 active={scheduleActive}
                 onActiveChange={setScheduleActive}
               />
+            </TabsContent>
+            <TabsContent value="run-as" data-tab="run-as" forceMount className="mt-4 data-[state=inactive]:hidden">
+              <div className="grid gap-4 md:grid-cols-2">
+                <RunAsFields
+                  id="job-run-as"
+                  label="Job runs as"
+                  mode={jobRunAsMode}
+                  onModeChange={setJobRunAsMode}
+                  principalName="jobRunAsPrincipal"
+                />
+                {selectedGroup?.enabled_incremental_source_count ? (
+                  <RunAsFields
+                    id="pipeline-run-as"
+                    label="CDC pipeline runs as"
+                    mode={pipelineRunAsMode}
+                    onModeChange={setPipelineRunAsMode}
+                    principalName="pipelineRunAsPrincipal"
+                    allowSameAsJob
+                  />
+                ) : (
+                  <p className="self-end text-xs text-muted-foreground">
+                    This group has no CDC pipeline, so only the job identity applies.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground md:col-span-2">
+                  The owner is the app service principal that creates the job and pipeline. Running as another user
+                  requires workspace admin rights for the app; running as another service principal requires the app to
+                  have the Service Principal User role on it. The pipeline setting is ignored when an existing CDC
+                  pipeline ID is provided.
+                </p>
+              </div>
             </TabsContent>
             <TabsContent value="compute" data-tab="compute" forceMount className="mt-4 data-[state=inactive]:hidden">
               <div className="space-y-4">
@@ -723,6 +761,52 @@ function JobDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RunAsFields({
+  id,
+  label,
+  mode,
+  onModeChange,
+  principalName,
+  allowSameAsJob = false,
+}: {
+  id: string;
+  label: string;
+  mode: string;
+  onModeChange: (value: string) => void;
+  principalName: string;
+  allowSameAsJob?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={mode} onValueChange={onModeChange}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {allowSameAsJob && <SelectItem value="SAME_AS_JOB">Same as job</SelectItem>}
+          <SelectItem value="DEFAULT">Owner (app service principal)</SelectItem>
+          <SelectItem value="USER">User</SelectItem>
+          <SelectItem value="SERVICE_PRINCIPAL">Service principal</SelectItem>
+        </SelectContent>
+      </Select>
+      {(mode === 'USER' || mode === 'SERVICE_PRINCIPAL') && (
+        <Input
+          key={mode}
+          id={`${id}-principal`}
+          name={principalName}
+          aria-label={mode === 'USER' ? `${label}: user email` : `${label}: service principal application ID`}
+          type={mode === 'USER' ? 'email' : 'text'}
+          pattern={mode === 'SERVICE_PRINCIPAL' ? '[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}' : undefined}
+          title={mode === 'SERVICE_PRINCIPAL' ? 'Service principal application ID (UUID)' : undefined}
+          placeholder={mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'}
+          required
+        />
+      )}
+    </div>
   );
 }
 
