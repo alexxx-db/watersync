@@ -66,6 +66,24 @@ export function registerJobRoutes(app: Application) {
     })
   );
 
+  app.get(
+    '/api/node-types',
+    apiRoute('node_types_list', async (_req, res) => {
+      const response = await workspace.clusters.listNodeTypes();
+      const nodeTypes = (response.node_types ?? [])
+        .filter((nodeType) => !nodeType.is_deprecated && !nodeType.is_hidden && !nodeType.num_gpus)
+        .sort((a, b) => a.memory_mb - b.memory_mb || a.num_cores - b.num_cores);
+      // Smallest general-purpose node with at least 4 cores, falling back to any node with 4 cores.
+      const preferred =
+        nodeTypes.find((nodeType) => nodeType.num_cores >= 4 && /general/i.test(nodeType.category)) ??
+        nodeTypes.find((nodeType) => nodeType.num_cores >= 4);
+      res.json({
+        nodeTypeIds: nodeTypes.map((nodeType) => nodeType.node_type_id),
+        defaultNodeTypeId: preferred?.node_type_id ?? null,
+      });
+    })
+  );
+
   app.post(
     '/api/jobs',
     apiRoute('jobs_save', async (req, res) => {

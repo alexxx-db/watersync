@@ -296,6 +296,28 @@ function JobDialog({
   const [gitBranch, setGitBranch] = useState('main');
   const [computeMode, setComputeMode] = useState<'SERVERLESS' | 'JOB_CLUSTER'>('SERVERLESS');
   const [performanceTarget, setPerformanceTarget] = useState<'STANDARD' | 'PERFORMANCE_OPTIMIZED'>('STANDARD');
+  const [tab, setTab] = useState('job');
+  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(
+    null
+  );
+  useEffect(() => {
+    if (!open || computeMode !== 'JOB_CLUSTER' || nodeTypes) return;
+    // Best effort: without the list the node type fields stay empty and must be filled in manually.
+    api<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null }>('/api/node-types')
+      .then(setNodeTypes)
+      .catch(() => setNodeTypes({ nodeTypeIds: [], defaultNodeTypeId: null }));
+  }, [open, computeMode, nodeTypes]);
+  // Inactive tabs are hidden, so the browser cannot focus an invalid field there and blocks the submit
+  // silently. Reveal the tab holding the first invalid field and say what is missing.
+  const revealInvalidField = (event: FormEvent<HTMLFormElement>) => {
+    const field = event.target as HTMLInputElement;
+    // The invalid event fires once per invalid field; report only the first one.
+    if (event.currentTarget.querySelector(':invalid') !== field) return;
+    const fieldTab = field.closest<HTMLElement>('[data-tab]')?.dataset.tab;
+    if (fieldTab) setTab(fieldTab);
+    const label = field.labels?.[0]?.textContent ?? field.name;
+    setError(`Check "${label}": ${field.validationMessage}`);
+  };
   useEffect(() => {
     if (open && !ingestionGroup && groups[0]) setIngestionGroup(groups[0].ingestion_group);
   }, [open, ingestionGroup, groups]);
@@ -349,10 +371,14 @@ function JobDialog({
             Select a configured ingestion group. WaterSync generates the parameters and task graph automatically.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
+        <form
+          onSubmit={(event) => void submit(event)}
+          onInvalidCapture={revealInvalidField}
+          className="space-y-4"
+        >
           {error && <ErrorState message={error} />}
           {groupsError && <ErrorState message={groupsError} />}
-          <Tabs defaultValue="job" className="w-full">
+          <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className={`grid w-full ${computeMode === 'JOB_CLUSTER' ? 'grid-cols-5' : 'grid-cols-4'}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
               <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
@@ -360,7 +386,7 @@ function JobDialog({
               {computeMode === 'JOB_CLUSTER' && <TabsTrigger value="cluster">Job cluster</TabsTrigger>}
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
             </TabsList>
-            <TabsContent value="job" forceMount className="mt-4 space-y-4 data-[state=inactive]:hidden">
+            <TabsContent value="job" data-tab="job" forceMount className="mt-4 space-y-4 data-[state=inactive]:hidden">
               <div className="space-y-2">
                 <Label htmlFor="ingestion-group">Ingestion group</Label>
                 {groupsLoading ? (
@@ -417,7 +443,7 @@ function JobDialog({
                 </Card>
               )}
             </TabsContent>
-            <TabsContent value="source" forceMount className="mt-4 data-[state=inactive]:hidden">
+            <TabsContent value="source" data-tab="source" forceMount className="mt-4 data-[state=inactive]:hidden">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="git-url">GitHub repository URL</Label>
@@ -486,7 +512,7 @@ function JobDialog({
                 </div>
               </div>
             </TabsContent>
-            <TabsContent value="schedule" forceMount className="mt-4 data-[state=inactive]:hidden">
+            <TabsContent value="schedule" data-tab="schedule" forceMount className="mt-4 data-[state=inactive]:hidden">
               <ScheduleFields
                 enabled={scheduleEnabled}
                 onEnabledChange={setScheduleEnabled}
@@ -494,7 +520,7 @@ function JobDialog({
                 onActiveChange={setScheduleActive}
               />
             </TabsContent>
-            <TabsContent value="compute" forceMount className="mt-4 data-[state=inactive]:hidden">
+            <TabsContent value="compute" data-tab="compute" forceMount className="mt-4 data-[state=inactive]:hidden">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="compute-mode">Compute mode</Label>
@@ -531,7 +557,7 @@ function JobDialog({
               </div>
             </TabsContent>
             {computeMode === 'JOB_CLUSTER' && (
-              <TabsContent value="cluster" forceMount className="mt-4 data-[state=inactive]:hidden">
+              <TabsContent value="cluster" data-tab="cluster" forceMount className="mt-4 data-[state=inactive]:hidden">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="spark-version">Databricks Runtime</Label>
@@ -546,20 +572,29 @@ function JobDialog({
                   <div className="space-y-2">
                     <Label htmlFor="driver-node-type">Driver node type</Label>
                     <Input
+                      key={`driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
                       id="driver-node-type"
                       name="driverNodeTypeId"
-                      placeholder="For example: i3.xlarge"
+                      list="node-type-options"
+                      defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                      placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
                       required
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="worker-node-type">Worker node type</Label>
                     <Input
+                      key={`worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
                       id="worker-node-type"
                       name="workerNodeTypeId"
-                      placeholder="For example: i3.xlarge"
+                      list="node-type-options"
+                      defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                      placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
                       required
                     />
+                    <datalist id="node-type-options">
+                      {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
+                    </datalist>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="min-workers">Minimum workers</Label>
