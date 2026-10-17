@@ -27,7 +27,8 @@ import { reportError } from '../lib/logging';
 import type { ImportResult, Location } from '../types';
 import { ErrorState, Toggle } from './shared';
 
-export function ExportButton({ location, onError }: { location: Location; onError: (message: string) => void }) {
+// Both live in the app header: they act on the whole selected location, not on one page.
+export function ExportButton({ location }: { location: Location }) {
   const [busy, setBusy] = useState(false);
   const download = async () => {
     setBusy(true);
@@ -40,19 +41,43 @@ export function ExportButton({ location, onError }: { location: Location; onErro
       link.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      onError(reportError('config.export', e, location));
+      // The header has no error area, so report the failure the way other one-off actions do.
+      alert(`Export failed: ${reportError('config.export', e, location)}`);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Button variant="outline" disabled={busy} onClick={() => void download()}>
+    <Button
+      variant="outline"
+      className="context-button"
+      disabled={busy}
+      onClick={() => void download()}
+      title={`Download the configuration of ${location.catalog}.${location.schema} as JSON`}
+    >
       <Download className="mr-2 h-4 w-4" /> {busy ? 'Exporting…' : 'Export'}
     </Button>
   );
 }
 
-export function ImportDialog({
+export function ImportButton({ location, onImported }: { location: Location; onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        variant="outline"
+        className="context-button"
+        onClick={() => setOpen(true)}
+        title={`Load a configuration file into ${location.catalog}.${location.schema}`}
+      >
+        <Upload className="mr-2 h-4 w-4" /> Import
+      </Button>
+      <ImportDialog open={open} onOpenChange={setOpen} location={location} onImported={onImported} />
+    </>
+  );
+}
+
+function ImportDialog({
   open,
   onOpenChange,
   location,

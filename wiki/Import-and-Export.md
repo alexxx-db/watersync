@@ -16,7 +16,7 @@ There are two ways to run it, with identical behavior:
 
 |                       | Where                                            | Best for                                          |
 | --------------------- | ------------------------------------------------ | ------------------------------------------------- |
-| **Control Plane app** | **Configuration** page → **Export** / **Import** | Ad hoc exports, reviewing a file before importing |
+| **Control Plane app** | **Export** / **Import** in the header, on every page | Ad hoc exports, reviewing a file before importing |
 | **Python script**     | `scripts/watersync_config.py`                    | Deployment pipelines and automation               |
 
 The script calls the deployed app, so validation, the config write, and job creation all run the same code.
@@ -46,8 +46,8 @@ Job settings are **read back from the Databricks API** at export time, from the 
 
 ### From the app
 
-1. Open the app and select the source catalog and schema (header button).
-2. Go to **Configuration** and click **Export**.
+1. Open the app and select the source catalog and schema with the location button in the header.
+2. Click **Export** next to it.
 3. The browser downloads `watersync-<catalog>.<schema>-<date>.json`.
 
 ### From the command line
@@ -87,12 +87,13 @@ After the import, the first run of each table reads it in full because there is 
 
 ### From the app
 
-1. Select the **target** catalog and schema.
-2. Go to **Configuration** and click **Import**.
+1. Select the **target** catalog and schema with the location button in the header.
+2. Click **Import** next to it.
 3. Choose the export file. The app validates it immediately and shows, per group, the number of source tables
    and whether job settings are included. Nothing has been written at this point.
 4. Choose the options: **Replace imported groups** and **Create or update the Databricks job**.
-5. Click **Import**. The dialog then shows the result per group, including the job ID or the error.
+5. Click **Import**. The dialog then shows the result per group, including the job ID or the error, and the
+   open page reloads its data.
 
 ### From the command line
 

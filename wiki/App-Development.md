@@ -180,7 +180,7 @@ one-line JSON records on stdout/stderr, which is what `databricks apps logs` and
 
 ## Export and Import Internals
 
-The **Configuration** page exports the selected location to a JSON file and imports such a file into another one.
+The **Export** and **Import** buttons in the app header export the selected location to a JSON file and import such a file into another one.
 User guide, file format and the deployment-pipeline script: [Import and Export](Import-and-Export.md).
 
 Where the code lives:
@@ -192,7 +192,8 @@ Where the code lives:
 - `server/ingestionJobs.ts`: `saveJob`, shared by the **Jobs** dialog and the import, and `readJobSettings`, which
   rebuilds a group's job settings from its generated job and CDC pipeline. `ingestionJobs.test.ts` round-trips
   settings through both, so a new job option needs both sides updated.
-- `client/src/components/ConfigTransfer.tsx`: the **Export** button and the **Import** dialog.
+- `client/src/components/ConfigTransfer.tsx`: the **Export** and **Import** header buttons (placed by `Layout.tsx`) and
+  the import dialog.
 
 ## Deployment with Databricks Asset Bundles
 

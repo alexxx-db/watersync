@@ -2,12 +2,22 @@
 
 `app/watersync-control-plane` is a Databricks App (AppKit, React, TypeScript) for running WaterSync without writing SQL. It works on one metadata location (`<catalog>.<schema>`) at a time, picked on the first screen and changeable from the header. When you select a location, the app creates the schema and any missing metadata tables and columns there (see [Migrations](App-Development.md#migrations)).
 
+## Header
+
+The header shows the selected location (click it to switch catalog and schema) and two actions that apply to the
+whole location, available on every page:
+
+- **Export** downloads the location's configuration (source tables and job settings) as JSON.
+- **Import** loads such a file into the location, after validating it and showing a preview.
+
+See [Import and Export](Import-and-Export.md).
+
 ## Pages
 
 | Page | What it does |
 | --- | --- |
 | **Overview** | Configured, enabled and failed source counts, and the latest pipeline activity, for the selected location |
-| **Configuration** | Add, edit and delete config rows. Discover source tables over a UC connection or a JDBC URL (SQL Server, Oracle, PostgreSQL, MySQL), optionally reading another database than the connection's (Oracle: service name), and infer key and watermark columns from primary-key constraints. [Export or import](Import-and-Export.md) the whole configuration as JSON |
+| **Configuration** | Add, edit and delete config rows. Discover source tables over a UC connection or a JDBC URL (SQL Server, Oracle, PostgreSQL, MySQL), optionally reading another database than the connection's (Oracle: service name), and infer key and watermark columns from primary-key constraints |
 | **Watermarks** | Inspect per-table state and schedule a full refresh for a single table (see [Full Refresh](CDC-Pipeline-and-Full-Refresh.md#full-refresh)) |
 | **Jobs** | Create or update a group's job and CDC pipeline (see [below](#jobs-created-by-the-app)), run it incrementally or as a full refresh, and edit its schedule. Each job card shows its last 10 runs |
 

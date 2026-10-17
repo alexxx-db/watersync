@@ -77,10 +77,11 @@ export function JobsPage() {
       .catch((e: unknown) => setError(reportError('jobs.list', e)))
       .finally(() => setLoading(false));
   };
+  // Reload on refresh too, e.g. after an import from the header created or updated jobs.
   useEffect(() => {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [revision]);
   const run = async (id: number, fullRefresh = false) => {
     setRunningJob(id);
     try {

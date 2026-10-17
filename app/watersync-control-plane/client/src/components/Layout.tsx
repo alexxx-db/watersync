@@ -19,6 +19,7 @@ import { reportWarning } from '../lib/logging';
 import type { Context, Location } from '../types';
 import { readLocation, writeLocation } from '../utils';
 import { LandingPage } from './LandingPage';
+import { ExportButton, ImportButton } from './ConfigTransfer';
 
 export function Layout() {
   const [location, setLocationState] = useState<Location | null>(readLocation);
@@ -115,6 +116,8 @@ export function Layout() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <ExportButton location={location} />
+          <ImportButton location={location} onImported={() => setRevision((v) => v + 1)} />
         </div>
         <div className="nav-strip">
           <nav className="mx-auto flex max-w-screen-2xl gap-1 overflow-x-auto px-6">
