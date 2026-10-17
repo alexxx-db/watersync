@@ -197,6 +197,17 @@ LIMIT 1
 
 Reuse these values for the new row unless the user specifies different credentials.
 
+## Copying configurations between environments
+
+When the user wants to copy or promote existing configurations (for example dev → prod), or add many rows at once from a file, prefer export/import over hand-written INSERTs. It validates every row with the same rules as this skill, upserts by `(ingestion_group, source_table_name)`, and can also create or update each group's job:
+
+```bash
+python scripts/watersync_config.py --profile <profile> export --catalog <src_catalog> --schema <src_schema> --output watersync.json
+python scripts/watersync_config.py --profile <profile> import --catalog <dst_catalog> --schema <dst_schema> --file watersync.json --dry-run
+```
+
+Check environment-specific names in the file (target catalogs, connections, secret scopes) before importing. Full guide: `wiki/Import-and-Export.md`.
+
 ## INSERT template
 
 Use this parameterised MERGE (upsert) to safely add or update a config row:
