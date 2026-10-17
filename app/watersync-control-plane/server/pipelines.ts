@@ -27,7 +27,8 @@ export async function groupNeedsCdcPipeline(catalog: string, schema: string, ing
 // watersync package (installed from git via environment.dependencies).  Pipeline
 // libraries need an absolute /Workspace path, so we write this tiny stub to
 // /Shared/ — it just imports and calls the builder.
-const pipelineBootstrap = 'from __future__ import annotations\n\nfrom pyspark import pipelines as dp\nfrom pyspark.sql import SparkSession\n\nfrom watersync.cdc_pipeline import build_pipeline_from_spark_conf\n\nspark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()\nbuild_pipeline_from_spark_conf(spark=spark, dp_module=dp)\n';
+const pipelineBootstrap =
+  'from __future__ import annotations\n\nfrom pyspark import pipelines as dp\nfrom pyspark.sql import SparkSession\n\nfrom watersync.cdc_pipeline import build_pipeline_from_spark_conf\n\nspark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()\nbuild_pipeline_from_spark_conf(spark=spark, dp_module=dp)\n';
 
 // Classic pipeline clusters cannot install pip packages and `environment` only applies to serverless,
 // so classic pipelines run a notebook that installs watersync with %pip before the bootstrap code.
@@ -77,7 +78,12 @@ export async function ensureCdcPipeline(opts: {
     });
     library = { notebook: { path: `/Workspace${notebookPath}` } };
   } else {
-    await workspace.workspace.import({ path: bootstrapPath, format: 'RAW', overwrite: true, content: Buffer.from(pipelineBootstrap).toString('base64') })
+    await workspace.workspace.import({
+      path: bootstrapPath,
+      format: 'RAW',
+      overwrite: true,
+      content: Buffer.from(pipelineBootstrap).toString('base64'),
+    });
     library = { file: { path: `/Workspace${bootstrapPath}` } };
   }
 

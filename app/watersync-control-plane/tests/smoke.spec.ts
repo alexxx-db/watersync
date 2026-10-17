@@ -58,7 +58,9 @@ test('jobs screen exposes the guided creation form', async ({ page }) => {
   await page.getByRole('tab', { name: 'Git source & execution' }).click();
   await expect(page.getByLabel('GitHub repository URL')).toBeVisible();
   await expect(page.getByLabel('Branch')).toBeVisible();
-  await expect(page.getByText('watersync@git+https://github.com/databricks-industry-solutions/watersync.git@main')).toBeVisible();
+  await expect(
+    page.getByText('watersync@git+https://github.com/databricks-industry-solutions/watersync.git@main')
+  ).toBeVisible();
   await expect(page.getByLabel('Existing CDC pipeline ID (optional)')).toBeDisabled();
 });
 

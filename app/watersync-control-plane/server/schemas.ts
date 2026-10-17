@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
 export const identifierPart = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
-const coercedBoolean = z.preprocess(
-  (val) => (typeof val === 'string' ? val === 'true' : val),
-  z.boolean()
-);
+const coercedBoolean = z.preprocess((val) => (typeof val === 'string' ? val === 'true' : val), z.boolean());
 export const locationSchema = z.object({ catalog: identifierPart, schema: identifierPart });
 export const configSchema = locationSchema
   .extend({
@@ -93,7 +90,11 @@ export const sourceDiscoverySchema = z
     if (!value.ucSecretName) {
       for (const field of ['jdbcSecretScope', 'jdbcSecretKey'] as const) {
         if (!value[field]) {
-          context.addIssue({ code: 'custom', path: [field], message: 'Required for direct JDBC discovery (or provide ucSecretName)' });
+          context.addIssue({
+            code: 'custom',
+            path: [field],
+            message: 'Required for direct JDBC discovery (or provide ucSecretName)',
+          });
         }
       }
     }
@@ -115,7 +116,10 @@ export const sourceColumnsBatchSchema = sourceDiscoverySchema.extend({
     .min(1)
     .max(10),
 });
-export const keySchema = locationSchema.extend({ ingestionGroup: z.string().min(1), sourceTableName: z.string().min(1) });
+export const keySchema = locationSchema.extend({
+  ingestionGroup: z.string().min(1),
+  sourceTableName: z.string().min(1),
+});
 export const watermarkSchema = keySchema.extend({ lastWatermark: z.string().nullable(), status: z.string().min(1) });
 export const cronExpression = z
   .string()
@@ -169,7 +173,8 @@ export const pipelineComputeSchema = z
       ['nodeTypeId', value.nodeTypeId],
       ['driverNodeTypeId', value.driverNodeTypeId],
     ] as const) {
-      if (!fieldValue) context.addIssue({ code: 'custom', path: [field], message: 'Required for classic pipeline compute' });
+      if (!fieldValue)
+        context.addIssue({ code: 'custom', path: [field], message: 'Required for classic pipeline compute' });
     }
     if (value.maxWorkers < value.minWorkers) {
       context.addIssue({
@@ -181,7 +186,10 @@ export const pipelineComputeSchema = z
   });
 const runAsPrincipalIssue = (mode: string, principal: string) => {
   if (mode === 'USER' && !/^[^\s@]+@[^\s@]+$/.test(principal)) return 'Enter the user email';
-  if (mode === 'SERVICE_PRINCIPAL' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(principal)) {
+  if (
+    mode === 'SERVICE_PRINCIPAL' &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(principal)
+  ) {
     return 'Enter the service principal application ID';
   }
   return null;

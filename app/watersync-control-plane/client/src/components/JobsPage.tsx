@@ -34,18 +34,12 @@ import {
   TabsTrigger,
   useAnalyticsQuery,
 } from '@databricks/appkit-ui/react';
-import {
-  Clock3,
-  ExternalLink,
-  Play,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
+import { Clock3, ExternalLink, Play, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { reportError, useReportedFailure } from '../lib/logging';
 import type { JobRow, Location } from '../types';
 import { fqn, displayTime, runStatus, statusVariant, runDuration, formString } from '../utils';
-import { useControl } from './Layout';
+import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ScheduleFields } from './shared';
 
 export function JobsPage() {
@@ -202,7 +196,9 @@ export function JobsPage() {
                   )}
                   <p className="mt-2 text-xs text-muted-foreground">
                     Latest:{' '}
-                    {job.runs[0] ? `${displayTime(job.runs[0].start_time)} \u00b7 ${runDuration(job.runs[0])}` : 'Never run'}
+                    {job.runs[0]
+                      ? `${displayTime(job.runs[0].start_time)} \u00b7 ${runDuration(job.runs[0])}`
+                      : 'Never run'}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -219,7 +215,12 @@ export function JobsPage() {
                     variant="outline"
                     disabled={!job.job_id || runningJob === job.job_id}
                     onClick={() => {
-                      if (job.job_id && confirm('Run a full refresh? Staging will be replaced with a fresh snapshot and CDC will reprocess from scratch.')) {
+                      if (
+                        job.job_id &&
+                        confirm(
+                          'Run a full refresh? Staging will be replaced with a fresh snapshot and CDC will reprocess from scratch.'
+                        )
+                      ) {
                         void run(job.job_id, true);
                       }
                     }}
@@ -303,9 +304,7 @@ function JobDialog({
   const [pipelinePhoton, setPipelinePhoton] = useState(false);
   const [jobRunAsMode, setJobRunAsMode] = useState('DEFAULT');
   const [pipelineRunAsMode, setPipelineRunAsMode] = useState('SAME_AS_JOB');
-  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(
-    null
-  );
+  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(null);
   useEffect(() => {
     if (!open || (computeMode !== 'JOB_CLUSTER' && pipelineComputeMode !== 'CLASSIC') || nodeTypes) return;
     // Best effort: without the list the node type fields stay empty and must be filled in manually.
@@ -398,15 +397,13 @@ function JobDialog({
             Select a configured ingestion group. WaterSync generates the parameters and task graph automatically.
           </DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={(event) => void submit(event)}
-          onInvalidCapture={revealInvalidField}
-          className="space-y-4"
-        >
+        <form onSubmit={(event) => void submit(event)} onInvalidCapture={revealInvalidField} className="space-y-4">
           {error && <ErrorState message={error} />}
           {groupsError && <ErrorState message={groupsError} />}
           <datalist id="node-type-options">
-            {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
+            {nodeTypes?.nodeTypeIds.map((id) => (
+              <option key={id} value={id} />
+            ))}
           </datalist>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className={`grid w-full ${tabColumns[tabCount]}`}>
@@ -449,8 +446,8 @@ function JobDialog({
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Generated job</CardTitle>
                     <CardDescription>
-                      [{selectedGroup.ingestion_group}] Ingestion Pipeline {'\u00b7'} {selectedGroup.source_count} configured
-                      sources
+                      [{selectedGroup.ingestion_group}] Ingestion Pipeline {'\u00b7'} {selectedGroup.source_count}{' '}
+                      configured sources
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-2">
@@ -577,8 +574,8 @@ function JobDialog({
                 <p className="text-xs text-muted-foreground md:col-span-2">
                   The owner is the app service principal that creates the job and SDP pipeline. Running as another user
                   requires workspace admin rights for the app; running as another service principal requires the app to
-                  have the Service Principal User role on it. The SDP setting is ignored when an existing SDP
-                  pipeline ID is provided.
+                  have the Service Principal User role on it. The SDP setting is ignored when an existing SDP pipeline
+                  ID is provided.
                 </p>
               </div>
             </TabsContent>
@@ -649,15 +646,20 @@ function JobDialog({
                       <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
                     </div>
                     <p className="text-xs text-muted-foreground md:col-span-2">
-                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its
-                      own pipeline compute.
+                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses
+                      its own pipeline compute.
                     </p>
                   </div>
                 )}
               </div>
             </TabsContent>
             {hasCdcPipeline && (
-              <TabsContent value="pipeline" data-tab="pipeline" forceMount className="mt-4 data-[state=inactive]:hidden">
+              <TabsContent
+                value="pipeline"
+                data-tab="pipeline"
+                forceMount
+                className="mt-4 data-[state=inactive]:hidden"
+              >
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="pipeline-compute-mode">SDP compute</Label>
@@ -688,39 +690,53 @@ function JobDialog({
                   )}
                   {pipelineComputeMode === 'CLASSIC' && (
                     <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
-                      <Input
-                        key={`pipeline-worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="pipeline-node-type"
-                        name="pipelineNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
-                      <Input
-                        key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="pipeline-driver-node-type"
-                        name="pipelineDriverNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
-                      <Input id="pipeline-min-workers" name="pipelineMinWorkers" type="number" min="0" defaultValue="1" required />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
-                      <Input id="pipeline-max-workers" name="pipelineMaxWorkers" type="number" min="1" defaultValue="4" required />
-                    </div>
-                          <div className="flex items-center gap-2 md:col-span-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
+                        <Input
+                          key={`pipeline-worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                          id="pipeline-node-type"
+                          name="pipelineNodeTypeId"
+                          list="node-type-options"
+                          defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                          placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
+                        <Input
+                          key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                          id="pipeline-driver-node-type"
+                          name="pipelineDriverNodeTypeId"
+                          list="node-type-options"
+                          defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                          placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
+                        <Input
+                          id="pipeline-min-workers"
+                          name="pipelineMinWorkers"
+                          type="number"
+                          min="0"
+                          defaultValue="1"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
+                        <Input
+                          id="pipeline-max-workers"
+                          name="pipelineMaxWorkers"
+                          type="number"
+                          min="1"
+                          defaultValue="4"
+                          required
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 md:col-span-2">
                         <Switch
                           id="pipeline-photon"
                           checked={pipelinePhoton}
@@ -828,7 +844,9 @@ function RunAsFields({
           type={mode === 'USER' ? 'email' : 'text'}
           pattern={mode === 'SERVICE_PRINCIPAL' ? '[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}' : undefined}
           title={mode === 'SERVICE_PRINCIPAL' ? 'Service principal application ID (UUID)' : undefined}
-          placeholder={mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'}
+          placeholder={
+            mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'
+          }
           required
         />
       )}

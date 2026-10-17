@@ -30,7 +30,7 @@ import { api } from '../lib/api';
 import { reportError, useReportedFailure } from '../lib/logging';
 import type { Location, WatermarkRow } from '../types';
 import { fqn, displayTime } from '../utils';
-import { useControl } from './Layout';
+import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, Field } from './shared';
 
 export function WatermarksPage() {
@@ -198,11 +198,10 @@ function FullRefreshDialog({
         <DialogHeader>
           <DialogTitle>Confirm full refresh</DialogTitle>
           <DialogDescription>
-            This will set the status of{' '}
-            <span className="font-mono font-semibold">{row?.source_table_name}</span>{' '}
-            (group <span className="font-semibold">{row?.ingestion_group}</span>) to{' '}
-            <Badge variant="secondary">FULL_REFRESH</Badge>. The next pipeline run will clear and
-            fully reload this table.
+            This will set the status of <span className="font-mono font-semibold">{row?.source_table_name}</span> (group{' '}
+            <span className="font-semibold">{row?.ingestion_group}</span>) to{' '}
+            <Badge variant="secondary">FULL_REFRESH</Badge>. The next pipeline run will clear and fully reload this
+            table.
           </DialogDescription>
         </DialogHeader>
         {error && <ErrorState message={error} />}

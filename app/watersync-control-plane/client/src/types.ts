@@ -1,5 +1,10 @@
 export type Location = { catalog: string; schema: string };
-export type Context = { location: Location; setLocation: (location: Location) => void; revision: number; refresh: () => void };
+export type Context = {
+  location: Location;
+  setLocation: (location: Location) => void;
+  revision: number;
+  refresh: () => void;
+};
 export type ConfigRow = {
   ingestion_group: string;
   source_table_name: string;

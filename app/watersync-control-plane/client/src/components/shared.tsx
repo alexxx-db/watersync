@@ -19,7 +19,15 @@ import {
 } from '@databricks/appkit-ui/react';
 import type { SourceColumn, JobSchedule } from '../types';
 
-export function PageTitle({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
+export function PageTitle({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="page-title mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>

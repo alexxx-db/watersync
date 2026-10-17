@@ -88,7 +88,7 @@ export function registerJobRoutes(app: Application) {
     '/api/jobs/:jobId/run',
     apiRoute('jobs_run', async (req, res) => {
       const jobId = z.coerce.number().int().positive().parse(req.params.jobId);
-      const fullRefresh = req.body?.fullRefresh === true;
+      const fullRefresh = (req.body as { fullRefresh?: unknown } | undefined)?.fullRefresh === true;
 
       if (fullRefresh) {
         // runNow cannot combine job_parameters with pipeline_params, so we

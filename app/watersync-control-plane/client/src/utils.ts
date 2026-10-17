@@ -87,8 +87,7 @@ export const stringTypes = ['char', 'varchar', 'nvarchar', 'text', 'string'];
 export const isType = (column: SourceColumn, types: string[]) =>
   types.some((type) => column.data_type.toLowerCase().includes(type));
 export const safeTargetName = (value: string) => value.replace(/[^A-Za-z0-9_]/g, '_').toLowerCase();
-export const toBool = (value: unknown): boolean =>
-  typeof value === 'string' ? value === 'true' : Boolean(value);
+export const toBool = (value: unknown): boolean => (typeof value === 'string' ? value === 'true' : Boolean(value));
 export const sourceTableLimit = 1000;
 // Mirrors the server predicate: "schema.table" narrows both sides, anything else matches either.
 export const matchesTableFilter = (table: SourceTable, filter: string) => {

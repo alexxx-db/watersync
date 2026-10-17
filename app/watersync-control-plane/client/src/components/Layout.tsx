@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useOutletContext } from 'react-router';
+import { NavLink, Outlet } from 'react-router';
 import {
   Badge,
   Button,
@@ -141,5 +141,3 @@ export function Layout() {
     </div>
   );
 }
-
-export const useControl = () => useOutletContext<Context>();
