@@ -10,11 +10,12 @@ import {
 import { registerConfigRoutes } from './routes/config.js';
 import { registerDiscoveryRoutes } from './routes/discovery.js';
 import { registerJobRoutes } from './routes/jobs.js';
+import { registerTransferRoutes } from './routes/transfer.js';
 
 installProcessLogging();
 
 await createApp({
-  plugins: [analytics(), server()],
+  plugins: [analytics(), server({ bodyLimit: '10mb' })],
   onPluginsReady(appkit) {
     appkit.server.extend((app) => {
       app.use(requestLogging());
@@ -31,6 +32,7 @@ await createApp({
       registerConfigRoutes(app);
       registerDiscoveryRoutes(app);
       registerJobRoutes(app);
+      registerTransferRoutes(app);
 
       logger.info('server.routes_registered', { nodeEnv: process.env.NODE_ENV ?? 'development' });
     });

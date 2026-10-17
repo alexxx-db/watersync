@@ -81,3 +81,19 @@ export type TableDraft = {
   stagingFqn: string;
 };
 export type InferenceProgress = { completed: number; total: number };
+export type ImportGroupSummary = { ingestionGroup: string; configCount: number; hasJobSettings: boolean };
+export type ImportJobResult = {
+  ingestionGroup: string;
+  jobId?: number;
+  pipelineId?: string;
+  action?: 'created' | 'updated';
+  error?: string;
+};
+export type ImportResult = {
+  dryRun: boolean;
+  configCount: number;
+  jobCount: number;
+  groups: ImportGroupSummary[];
+  removedCount?: number;
+  jobs?: ImportJobResult[];
+};

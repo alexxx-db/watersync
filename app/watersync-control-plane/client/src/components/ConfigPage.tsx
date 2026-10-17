@@ -51,6 +51,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { reportError, useReportedFailure } from '../lib/logging';
@@ -69,6 +70,7 @@ import {
 } from '../utils';
 import { useControl } from './Layout';
 import { PageTitle, ErrorState, ControlledField, ColumnSelect, Field, Toggle } from './shared';
+import { ExportButton, ImportDialog } from './ConfigTransfer';
 
 export function ConfigPage() {
   const { location, revision, refresh } = useControl();
@@ -76,6 +78,7 @@ export function ConfigPage() {
   const [editing, setEditing] = useState<ConfigRow | null>(null);
   const [open, setOpen] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const params = useMemo(
     () => ({
@@ -118,6 +121,10 @@ export function ConfigPage() {
         description="Exact WaterSync source mappings; first 100 filtered rows."
         action={
           <div className="flex flex-wrap gap-2">
+            <ExportButton location={location} onError={setMessage} />
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Import
+            </Button>
             <Button variant="outline" onClick={() => setDiscoveryOpen(true)}>
               <Database className="mr-2 h-4 w-4" /> Discover tables
             </Button>
@@ -218,6 +225,7 @@ export function ConfigPage() {
           refresh();
         }}
       />
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} location={location} onImported={refresh} />
       <DiscoveryDialog
         open={discoveryOpen}
         onOpenChange={setDiscoveryOpen}

@@ -225,6 +225,31 @@ export const jobPayloadSchema = locationSchema.extend({
 });
 export const jobSchedulePayloadSchema = scheduleSchema.extend({ jobId: z.number().int().positive() });
 
+// Entries are kept loose here and validated one by one against configSchema / jobPayloadSchema, with the
+// import's target location filled in, so a file exported from one catalog.schema can be loaded into another.
+export const transferFormat = 'watersync-config';
+export const transferVersion = 1;
+export const transferFileSchema = z.object({
+  format: z.literal(transferFormat, { error: 'Not a WaterSync configuration export' }),
+  version: z.literal(transferVersion, { error: `Unsupported export version (expected ${transferVersion})` }),
+  configs: z.array(z.record(z.string(), z.unknown())).max(5000).optional().default([]),
+  jobs: z.array(z.record(z.string(), z.unknown())).max(500).optional().default([]),
+});
+export const importPayloadSchema = locationSchema.extend({
+  file: transferFileSchema,
+  // Delete rows of the imported groups that are not in the file, so each group matches the file exactly.
+  replaceGroups: z.boolean().optional().default(false),
+  // Create or update the Databricks job (and CDC pipeline) of every group with job settings in the file.
+  deployJobs: z.boolean().optional().default(false),
+  // Validate and summarize without writing anything.
+  dryRun: z.boolean().optional().default(false),
+});
+
 export type SourceDiscovery = z.infer<typeof sourceDiscoverySchema>;
 export type SourceDatabaseType = z.infer<typeof sourceDatabaseType>;
 export type PipelineCompute = z.infer<typeof pipelineComputeSchema>;
+export type Schedule = z.infer<typeof scheduleSchema>;
+export type ConfigPayload = z.infer<typeof configSchema>;
+export type JobPayload = z.infer<typeof jobPayloadSchema>;
+/** Job settings as stored and exported: the job payload without the location it was deployed to. */
+export type JobSettings = Omit<JobPayload, 'catalog' | 'schema'>;

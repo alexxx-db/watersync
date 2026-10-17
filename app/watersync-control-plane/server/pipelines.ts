@@ -34,6 +34,8 @@ const pipelineBootstrap = 'from __future__ import annotations\n\nfrom pyspark im
 const classicPipelineBootstrap = (dependency: string) =>
   `# Databricks notebook source\n# MAGIC %pip install "${dependency}"\n\n# COMMAND ----------\n\n${pipelineBootstrap.replace('from __future__ import annotations\n\n', '')}`;
 
+export const cdcPipelineName = (ingestionGroup: string) => `[${ingestionGroup}] CDC SCD2 Pipeline`;
+
 export async function ensureCdcPipeline(opts: {
   pipelineId?: string | null;
   catalog: string;
@@ -46,7 +48,7 @@ export async function ensureCdcPipeline(opts: {
 }) {
   if (opts.pipelineId) return opts.pipelineId;
 
-  const pipelineName = `[${opts.ingestionGroup}] CDC SCD2 Pipeline`;
+  const pipelineName = cdcPipelineName(opts.ingestionGroup);
   const safeNamePrefix = `[${opts.ingestionGroup}] CDC SCD2`.replace(/'/g, "''");
   let existingPipelineId: string | undefined;
   for await (const p of workspace.pipelines.listPipelines({ filter: `name LIKE '${safeNamePrefix}%'` })) {
