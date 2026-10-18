@@ -20,6 +20,7 @@ import type { Context, Location } from '../types';
 import { readLocation, writeLocation } from '../utils';
 import { LandingPage } from './LandingPage';
 import { ExportButton, ImportButton } from './ConfigTransfer';
+import { ReleaseNotice } from './ReleaseNotice';
 
 export function Layout() {
   const [location, setLocationState] = useState<Location | null>(readLocation);
@@ -66,13 +67,14 @@ export function Layout() {
               <Droplets className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-center gap-2">
                 <div className="brand-name">
                   WaterSync <span>Control Plane</span>
                 </div>
                 <span className="brand-version" title={`Built ${new Date(__APP_BUILD_TIME__).toLocaleString()}`}>
                   v{__APP_VERSION__}
                 </span>
+                <ReleaseNotice currentVersion={__APP_VERSION__} />
               </div>
               <div className="brand-subtitle">JDBC ingestion control plane</div>
             </div>

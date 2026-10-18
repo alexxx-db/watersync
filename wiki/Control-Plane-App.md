@@ -12,6 +12,16 @@ whole location, available on every page:
 
 See [Import and Export](Import-and-Export.md).
 
+### New release notice
+
+When a newer WaterSync release is published on GitHub, a warning triangle appears next to the version. Click it to
+read that release's notes and open it on GitHub. To update, redeploy the app from the new release.
+
+The app checks `https://api.github.com/repos/databricks-industry-solutions/watersync/releases/latest` from the
+server at most once an hour. If the workspace has no outbound internet access, or there is no newer release, no
+triangle is shown. See [App Development](App-Development.md#release-check) to point the check at another
+repository or turn it off.
+
 ## Pages
 
 | Page | What it does |

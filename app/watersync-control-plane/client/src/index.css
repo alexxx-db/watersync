@@ -53,6 +53,22 @@ body {
   font-size: 0.7rem;
   font-weight: 500;
 }
+.release-notice {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 0.3rem;
+  color: var(--warning-foreground);
+}
+.release-notice svg {
+  fill: var(--warning);
+}
+.release-notice:hover svg {
+  fill: color-mix(in oklch, var(--warning) 80%, var(--warning-foreground));
+}
+.release-notice:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 .brand-subtitle {
   margin-top: 0.15rem;
   color: var(--muted-foreground);

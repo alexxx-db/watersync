@@ -89,6 +89,22 @@ sed -i '' 's#"resolved": "https://<your-mirror-host>/#"resolved": "https://regis
 The header shows `version` from `package.json`, with the build time on hover. Both are injected at build time by
 `client/vite.config.ts`, so bump `version` when releasing a change.
 
+### Release check
+
+`GET /api/latest-release` (`server/releases.ts`) returns the latest published GitHub release, and the header compares its
+tag with the app version (`client/src/lib/version.ts`). If the release is newer, the header shows a warning triangle
+that opens the release notes (`client/src/components/ReleaseNotice.tsx`).
+
+- **Tags must be the app version**, as `vX.Y.Z` or `X.Y.Z`, so publish each release with the tag of the
+  `package.json` `version` it ships. Drafts and pre-releases are never "latest", so they never trigger the notice.
+- **Repository:** set `WATERSYNC_RELEASES_REPO` (in `app.yaml` or `.env`) to another `owner/name`, or to an empty
+  value to turn the check off. Default: `databricks-industry-solutions/watersync`.
+- **Network:** the server calls the GitHub API without a token, which allows 60 calls an hour per outbound IP.
+  Answers are cached for an hour (15 minutes after a failure). Failures are logged as `releases.check_failed` and
+  show no notice.
+- **Notes rendering:** `client/src/lib/releaseNotes.tsx` renders the Markdown subset GitHub uses (headings, bullet
+  lists, bold, inline code, links) as React elements, never as HTML, so release notes cannot inject markup.
+
 ### Development
 
 Run the app in development mode with hot reload:
@@ -153,6 +169,7 @@ npx vitest run
 | `POST /api/jobs`                                                                        | Create or update a group's job and CDC pipeline               |
 | `POST /api/jobs/:jobId/run`, `PATCH /api/jobs/:jobId/schedule`                          | Run a job (optionally as a full refresh), change its schedule |
 | `GET /api/export`, `POST /api/import`                                                   | Export or import a location's configuration                   |
+| `GET /api/latest-release`                                                               | Latest published GitHub release, for the new release notice   |
 
 ## Migrations
 

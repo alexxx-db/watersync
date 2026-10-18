@@ -85,6 +85,8 @@ export type TableDraft = {
   targetFqn: string;
   stagingFqn: string;
 };
+/** Latest published WaterSync release, as returned by GET /api/latest-release. */
+export type LatestRelease = { version: string; name: string; notes: string; url: string; publishedAt: string | null };
 export type InferenceProgress = { completed: number; total: number };
 export type ImportGroupSummary = { ingestionGroup: string; configCount: number; hasJobSettings: boolean };
 export type ImportJobResult = {
