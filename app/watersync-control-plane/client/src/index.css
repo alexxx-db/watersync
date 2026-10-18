@@ -47,6 +47,12 @@ body {
   color: var(--muted-foreground);
   font-weight: 550;
 }
+.brand-version {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
 .brand-subtitle {
   margin-top: 0.15rem;
   color: var(--muted-foreground);

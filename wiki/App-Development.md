@@ -84,6 +84,11 @@ sed -i '' 's#"resolved": "https://<your-mirror-host>/#"resolved": "https://regis
 (On Linux, use `sed -i` without `''`.) `npm ci` keeps working on the mirror, because npm swaps the
 `registry.npmjs.org` host for your configured registry when it downloads.
 
+### Version
+
+The header shows `version` from `package.json`, with the build time on hover. Both are injected at build time by
+`client/vite.config.ts`, so bump `version` when releasing a change.
+
 ### Development
 
 Run the app in development mode with hot reload:

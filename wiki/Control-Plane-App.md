@@ -4,7 +4,7 @@
 
 ## Header
 
-The header shows the selected location (click it to switch catalog and schema) and two actions that apply to the
+The header shows the app version next to its name (hover it for the build time), the selected location (click it to switch catalog and schema) and two actions that apply to the
 whole location, available on every page:
 
 - **Export** downloads the location's configuration (source tables and job settings) as JSON.
