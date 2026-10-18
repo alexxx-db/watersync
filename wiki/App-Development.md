@@ -71,6 +71,19 @@ databricks bundle deploy --profile production
 npm ci
 ```
 
+`package-lock.json` must resolve every package from `https://registry.npmjs.org/`, because the Databricks Apps build
+and CI install from it. If your npm points at a private mirror (for example a proxy reachable only from a company
+laptop), `npm install` writes that mirror's URLs into the lockfile and the app build then fails with `npm error 404`.
+`server/lockfile.test.ts` catches this. After adding or upgrading packages, switch the URLs back; the tarballs and
+integrity hashes are the same:
+
+```bash
+sed -i '' 's#"resolved": "https://<your-mirror-host>/#"resolved": "https://registry.npmjs.org/#' package-lock.json
+```
+
+(On Linux, use `sed -i` without `''`.) `npm ci` keeps working on the mirror, because npm swaps the
+`registry.npmjs.org` host for your configured registry when it downloads.
+
 ### Development
 
 Run the app in development mode with hot reload:
