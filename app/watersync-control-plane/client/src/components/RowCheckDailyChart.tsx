@@ -28,6 +28,7 @@ const MAX_SERIES = 8;
 const OTHER = 'Other tables';
 const CHART_HEIGHT = 220;
 
+const dayCount = (days: number) => (days === 1 ? '1 day' : `${days} days`);
 const toNumber = (value: number | string | null) => (value == null || value === '' ? null : Number(value));
 
 type Series = { label: string; keys: Set<string> };
@@ -162,8 +163,9 @@ export function RowCheckDailyChart({ location, revision }: { location: Location;
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Daily row counts</CardTitle>
         <CardDescription>
-          Last {DAYS} days, from each day&apos;s last whole-table basic check. Rows ingested is the target&apos;s growth
-          since the previous checked day, net of deletes.
+          Last {DAYS} days (UTC), from each day&apos;s last whole-table basic check. Rows ingested is the target&apos;s
+          growth since the previous checked day, net of deletes; on the first checked day, since that day&apos;s first
+          check.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -184,7 +186,7 @@ export function RowCheckDailyChart({ location, revision }: { location: Location;
               <h3 className="mb-1 text-sm font-medium">
                 Rows ingested per day
                 <span className="font-normal text-muted-foreground">
-                  {chart.hasIngested ? ` · ${chart.totalIngested.toLocaleString()} in ${chart.days} days` : ''}
+                  {chart.hasIngested ? ` · ${chart.totalIngested.toLocaleString()} in ${dayCount(chart.days)}` : ''}
                 </span>
               </h3>
               {chart.hasIngested ? (
@@ -202,7 +204,7 @@ export function RowCheckDailyChart({ location, revision }: { location: Location;
                   className="flex items-center justify-center text-sm text-muted-foreground"
                   style={{ height: CHART_HEIGHT }}
                 >
-                  Appears once the basic check has run on two different days.
+                  Appears once the basic check has run twice.
                 </p>
               )}
             </section>
@@ -215,8 +217,10 @@ export function RowCheckDailyChart({ location, revision }: { location: Location;
                   }
                 >
                   {chart.daysWithDifference
-                    ? ` · differs on ${chart.daysWithDifference} of ${chart.days} days`
-                    : ` · equal on all ${chart.days} days`}
+                    ? ` · differs on ${chart.daysWithDifference} of ${dayCount(chart.days)}`
+                    : chart.days === 1
+                      ? ' · equal on the 1 day'
+                      : ` · equal on all ${chart.days} days`}
                 </span>
               </h3>
               <LineChart

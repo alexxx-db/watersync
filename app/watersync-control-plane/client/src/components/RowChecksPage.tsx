@@ -609,9 +609,19 @@ function RunStrip({ job, activeRuns }: { job: RowCheckJob; activeRuns: RowCheckR
                 className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
                 title={run.stateMessage ?? ''}
               >
-                <Badge variant={state === 'SUCCESS' ? 'default' : isActive(run) ? 'secondary' : 'destructive'}>
-                  {state}
-                </Badge>
+                {/* The default Badge is the brand red, which would make a successful run look failed. */}
+                <span
+                  className={`check-status ${
+                    state === 'SUCCESS'
+                      ? 'check-status-match'
+                      : isActive(run)
+                        ? 'check-status-running'
+                        : 'check-status-mismatch'
+                  }`}
+                >
+                  {isActive(run) && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+                  {state.charAt(0) + state.slice(1).toLowerCase().replace(/_/g, ' ')}
+                </span>
                 <span className="font-medium">{run.checkMode}</span>
                 <span className="font-mono text-muted-foreground">
                   {run.sourceTableName || run.ingestionGroup || 'all tables'}
