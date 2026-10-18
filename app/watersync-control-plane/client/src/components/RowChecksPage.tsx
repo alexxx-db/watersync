@@ -36,6 +36,8 @@ import {
 import {
   CheckCircle2,
   ExternalLink,
+  Loader2,
+  PanelRightOpen,
   Play,
   RefreshCw,
   ScanSearch,
@@ -47,7 +49,7 @@ import type { QueryRegistry } from '@databricks/appkit-ui/react';
 import { api } from '../lib/api';
 import { reportError, reportWarning, useReportedFailure } from '../lib/logging';
 import type { Location, RowCheckJob, RowCheckMode, RowCheckRun } from '../types';
-import { displayTime, formString, fqn } from '../utils';
+import { displayTime, formString, fqn, relativeTime } from '../utils';
 import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, Metric, ScheduleFields, Toggle } from './shared';
 
@@ -64,11 +66,86 @@ const signed = (value: number | string | null | undefined) =>
   value == null ? '—' : `${Number(value) > 0 ? '+' : ''}${Number(value).toLocaleString()}`;
 const pollIntervalMs = 15_000;
 
+const statusStyles = {
+  MATCH: { className: 'check-status-match', label: 'Match', Icon: CheckCircle2 },
+  MISMATCH: { className: 'check-status-mismatch', label: 'Mismatch', Icon: XCircle },
+  // ERROR means the table could not be checked, not that the data differs.
+  ERROR: { className: 'check-status-error', label: 'Error', Icon: TriangleAlert },
+} as const;
+
 function CheckStatus({ status, running = false }: { status: string | null; running?: boolean }) {
-  if (running) return <Badge variant="secondary">RUNNING</Badge>;
-  if (!status) return <Badge variant="outline">NOT CHECKED</Badge>;
-  return <Badge variant={status === 'MATCH' ? 'default' : 'destructive'}>{status}</Badge>;
+  if (running) {
+    return (
+      <span className="check-status check-status-running">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        Running
+      </span>
+    );
+  }
+  const style = status ? statusStyles[status as keyof typeof statusStyles] : undefined;
+  if (!style) return <span className="check-status check-status-none">Not checked</span>;
+  return (
+    <span className={`check-status ${style.className}`}>
+      <style.Icon className="h-3.5 w-3.5" aria-hidden />
+      {style.label}
+    </span>
+  );
 }
+
+function CheckedAt({ value }: { value: string | null }) {
+  return (
+    <span className="text-xs text-muted-foreground" title={value ? displayTime(value) : undefined}>
+      {relativeTime(value)}
+    </span>
+  );
+}
+
+/** One line on what the detailed check found; silent when there is nothing to add. */
+function DetailedFindings({ row }: { row: RowCheckRow }) {
+  if (!row.detailed_status || row.detailed_status === 'ERROR') return null;
+  const chunks = Number(row.detailed_chunk_count ?? 0);
+  const differing = Number(row.detailed_mismatched_chunks ?? 0);
+  if (!differing) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {chunks === 1 ? 'All rows match' : `${count(chunks)} chunks match`}
+      </span>
+    );
+  }
+  const findings = [
+    Number(row.detailed_missing_in_target) && `${count(row.detailed_missing_in_target)} missing`,
+    Number(row.detailed_extra_in_target) && `${count(row.detailed_extra_in_target)} extra`,
+    Number(row.detailed_mismatched_rows) && `${count(row.detailed_mismatched_rows)} changed`,
+  ].filter(Boolean);
+  return (
+    <span className="text-xs">
+      <span className="font-medium text-destructive">
+        {findings.length ? findings.join(' · ') : 'Aggregates differ'}
+      </span>
+      <span className="text-muted-foreground">
+        {' '}
+        in {count(differing)} of {count(chunks)} chunks
+      </span>
+    </span>
+  );
+}
+
+function CheckError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <span className="block max-w-96 truncate text-xs text-muted-foreground" title={message}>
+      {message}
+    </span>
+  );
+}
+
+// Problems first: errors, then mismatches, then matches, then tables never checked.
+const severity = (row: RowCheckRow) => {
+  const statuses = [row.basic_status, row.detailed_status];
+  if (statuses.includes('ERROR')) return 0;
+  if (statuses.includes('MISMATCH')) return 1;
+  return statuses.some(Boolean) ? 2 : 3;
+};
 
 export function RowChecksPage() {
   const { location, revision, refresh } = useControl();
@@ -254,83 +331,113 @@ export function RowChecksPage() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Group</TableHead>
-                <TableHead>Source → target</TableHead>
-                <TableHead className="text-right">Source rows</TableHead>
-                <TableHead className="text-right">Target rows</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead />
+                <TableHead colSpan={4} className="check-group-head check-group-divider">
+                  Basic check · row counts
+                </TableHead>
+                <TableHead className="check-group-head check-group-divider">Detailed check</TableHead>
+                <TableHead />
+              </TableRow>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Table</TableHead>
+                <TableHead className="check-group-divider text-right">Source</TableHead>
+                <TableHead className="text-right">Target</TableHead>
                 <TableHead className="text-right">Difference</TableHead>
-                <TableHead>Basic check</TableHead>
-                <TableHead>Detailed check</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Result</TableHead>
+                <TableHead className="check-group-divider">Result</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((row) => {
-                const key = `${row.ingestion_group}/${row.source_table_name}`;
-                const basicRunning = activeRuns.some((run) => run.checkMode === 'basic' && runCovers(run, row));
-                const detailedRunning = activeRuns.some((run) => run.checkMode === 'detailed' && runCovers(run, row));
-                return (
-                  <TableRow key={key}>
-                    <TableCell>{row.ingestion_group}</TableCell>
-                    <TableCell>
-                      <div className="font-mono text-xs">{row.source_table_name}</div>
-                      <div className="font-mono text-xs text-muted-foreground">{row.target_table_fqn}</div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{count(row.basic_source_count)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{count(row.basic_target_count)}</TableCell>
-                    <TableCell
-                      className={`text-right tabular-nums ${Number(row.basic_count_diff) ? 'font-semibold text-destructive' : ''}`}
-                    >
-                      {signed(row.basic_count_diff)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1" title={row.basic_error ?? ''}>
-                        <CheckStatus status={row.basic_status} running={basicRunning} />
-                        <span className="text-xs text-muted-foreground">{displayTime(row.basic_checked_at)}</span>
-                        <CheckedRange range={row.basic_checked_range} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-start gap-1" title={row.detailed_error ?? ''}>
-                        <CheckStatus status={row.detailed_status} running={detailedRunning} />
-                        {row.detailed_status && row.detailed_status !== 'ERROR' && (
-                          <span className="text-xs text-muted-foreground">
-                            {count(row.detailed_mismatched_chunks)} of {count(row.detailed_chunk_count)} chunks differ
-                            {Number(row.detailed_drilled_chunks) > 0 &&
-                              ` · ${count(row.detailed_missing_in_target)} missing · ${count(row.detailed_extra_in_target)} extra · ${row.detailed_mismatched_rows == null ? '—' : count(row.detailed_mismatched_rows)} changed`}
+              {[...data]
+                .sort((a, b) => severity(a) - severity(b))
+                .map((row) => {
+                  const key = `${row.ingestion_group}/${row.source_table_name}`;
+                  const basicRunning = activeRuns.some((run) => run.checkMode === 'basic' && runCovers(run, row));
+                  const detailedRunning = activeRuns.some((run) => run.checkMode === 'detailed' && runCovers(run, row));
+                  const difference = Number(row.basic_count_diff ?? 0);
+                  return (
+                    <TableRow key={key}>
+                      <TableCell className="max-w-80">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-mono text-sm font-medium" title={row.source_table_name}>
+                            {row.source_table_name}
                           </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">{displayTime(row.detailed_checked_at)}</span>
-                        <CheckedRange range={row.detailed_checked_range} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="space-x-1 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDetailedFor(row)}
-                        disabled={!job || starting !== null || detailedRunning}
-                        title="Compare chunk aggregates, then the rows of the chunks that differ"
+                          <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
+                            {row.ingestion_group}
+                          </Badge>
+                        </div>
+                        <div className="truncate font-mono text-xs text-muted-foreground" title={row.target_table_fqn}>
+                          → {row.target_table_fqn}
+                        </div>
+                      </TableCell>
+                      <TableCell className="check-group-divider text-right tabular-nums">
+                        {count(row.basic_source_count)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{count(row.basic_target_count)}</TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${
+                          difference ? 'font-semibold text-destructive' : 'text-muted-foreground'
+                        }`}
                       >
-                        <ScanSearch className="mr-1 h-3.5 w-3.5" />
-                        {starting === key ? 'Starting…' : 'Detailed check'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDetails(row)}
-                        disabled={!row.basic_status && !row.detailed_status}
-                      >
-                        Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                        {row.basic_count_diff == null ? '—' : signed(row.basic_count_diff)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-1">
+                          <CheckStatus status={row.basic_status} running={basicRunning} />
+                          {row.basic_status && <CheckedAt value={row.basic_checked_at} />}
+                          <CheckError message={row.basic_error} />
+                          <CheckedRange range={row.basic_checked_range} />
+                        </div>
+                      </TableCell>
+                      <TableCell className="check-group-divider">
+                        <div className="flex flex-col items-start gap-1">
+                          <div className="flex items-center gap-2">
+                            <CheckStatus status={row.detailed_status} running={detailedRunning} />
+                            {row.detailed_status && <CheckedAt value={row.detailed_checked_at} />}
+                          </div>
+                          <DetailedFindings row={row} />
+                          <CheckError message={row.detailed_error} />
+                          <CheckedRange range={row.detailed_checked_range} />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setDetailedFor(row)}
+                            disabled={!job || starting !== null || detailedRunning}
+                            title={
+                              job
+                                ? 'Compare chunk aggregates, then the rows of the chunks that differ'
+                                : 'Set up the row check job first'
+                            }
+                          >
+                            <ScanSearch className="mr-1.5 h-3.5 w-3.5" />
+                            {starting === key ? 'Starting…' : 'Run detailed'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDetails(row)}
+                            disabled={!row.basic_status && !row.detailed_status}
+                            aria-label={`Details of ${row.source_table_name}`}
+                            title="Details"
+                          >
+                            <PanelRightOpen className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </Card>

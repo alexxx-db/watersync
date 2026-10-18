@@ -461,3 +461,54 @@ tbody tr:hover {
     --sidebar-ring: var(--ring);
   }
 }
+
+/* Row check results: semantic status pills (icon + label, so status never relies on color alone). */
+.check-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem 0.1rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+.check-status-match {
+  border-color: color-mix(in oklch, var(--success) 45%, var(--border));
+  background: color-mix(in oklch, var(--success) 12%, var(--card));
+  color: var(--success);
+}
+.check-status-mismatch {
+  border-color: color-mix(in oklch, var(--destructive) 45%, var(--border));
+  background: color-mix(in oklch, var(--destructive) 12%, var(--card));
+  color: var(--destructive);
+}
+.check-status-error {
+  border-color: color-mix(in oklch, var(--warning) 55%, var(--border));
+  background: color-mix(in oklch, var(--warning) 16%, var(--card));
+  color: var(--warning-foreground);
+}
+.check-status-running {
+  border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  background: color-mix(in oklch, var(--primary) 10%, var(--card));
+  color: var(--primary);
+}
+.check-status-none {
+  border-style: dashed;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+/* Group header over the columns one check produces. */
+.check-group-head {
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.check-group-divider {
+  border-left: 1px solid var(--border);
+}
