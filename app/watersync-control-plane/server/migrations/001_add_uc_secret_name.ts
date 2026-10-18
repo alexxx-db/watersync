@@ -19,8 +19,6 @@ export default {
     );
     const rows = (response as { result?: { data_array?: string[][] } }).result?.data_array ?? [];
     if (rows.length > 0) return; // column already exists
-    await ctx.execute(
-      `ALTER TABLE ${target} ADD COLUMNS (uc_secret_name STRING)`
-    );
+    await ctx.execute(`ALTER TABLE ${target} ADD COLUMNS (uc_secret_name STRING)`);
   },
 } satisfies Migration;

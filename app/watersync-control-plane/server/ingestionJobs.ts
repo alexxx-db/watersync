@@ -1,0 +1,288 @@
+import type { jobs } from '@databricks/sdk-experimental';
+import { toRunAs, type JobPayload, type JobSettings } from './schemas.js';
+import { workspace } from './sql.js';
+import {
+  cdcPipelineName,
+  groupNeedsCdcPipeline,
+  ensureCdcPipeline,
+  plannerNotebookPath,
+  workerNotebookPath,
+  selectiveRefreshNotebookPath,
+  watersyncDependency,
+} from './pipelines.js';
+import { logger, serializeError } from './logging.js';
+
+const jobName = (ingestionGroup: string) => `[${ingestionGroup}] Ingestion Pipeline`;
+const environmentKey = 'watersync_environment';
+const jobClusterKey = 'watersync_cluster';
+
+/** Creates or updates the group's job (and its CDC pipeline when the group needs one). */
+export async function saveJob(body: JobPayload) {
+  const hasIncrementalSources = await groupNeedsCdcPipeline(body.catalog, body.schema, body.ingestionGroup);
+  const cdcPipelineId = hasIncrementalSources
+    ? await ensureCdcPipeline({
+        pipelineId: body.cdcPipelineId,
+        catalog: body.catalog,
+        schema: body.schema,
+        ingestionGroup: body.ingestionGroup,
+        gitUrl: body.gitUrl,
+        gitBranch: body.gitBranch,
+        compute: body.pipelineCompute,
+        runAs: toRunAs(body.runAs.pipeline.mode === 'SAME_AS_JOB' ? body.runAs.job : body.runAs.pipeline),
+      })
+    : undefined;
+  const name = jobName(body.ingestionGroup);
+  const jobRunAs = toRunAs(body.runAs.job);
+  const configurationFqn = `${body.catalog}.${body.schema}.jdbc_ingestion_config`;
+  const watermarkFqn = `${body.catalog}.${body.schema}.jdbc_ingestion_watermark`;
+  const dependency = watersyncDependency(body.gitUrl, body.gitBranch);
+  const taskCompute =
+    body.compute.mode === 'SERVERLESS'
+      ? { environment_key: environmentKey }
+      : {
+          job_cluster_key: jobClusterKey,
+          libraries: [{ pypi: { package: dependency } }],
+        };
+  const tasks: jobs.Task[] = [
+    {
+      task_key: 'ingestion_configs',
+      notebook_task: { notebook_path: plannerNotebookPath, source: 'GIT' },
+      ...taskCompute,
+    },
+    {
+      task_key: 'ingestion_worker',
+      depends_on: [{ task_key: 'ingestion_configs' }],
+      for_each_task: {
+        inputs: '{{tasks.ingestion_configs.values.table_configs}}',
+        concurrency: body.foreachConcurrency,
+        task: {
+          task_key: 'ingestion_worker_iteration',
+          ...taskCompute,
+          notebook_task: {
+            notebook_path: workerNotebookPath,
+            source: 'GIT',
+            base_parameters: {
+              source_table_name: '{{input.source_table_name}}',
+              full_refresh: '{{job.parameters.full_refresh}}',
+            },
+          },
+        },
+      },
+    },
+  ];
+  if (cdcPipelineId) {
+    tasks.push({
+      task_key: 'selective_pipeline_refresh',
+      depends_on: [{ task_key: 'ingestion_worker' }],
+      ...taskCompute,
+      notebook_task: {
+        notebook_path: selectiveRefreshNotebookPath,
+        source: 'GIT',
+        base_parameters: {
+          cdc_pipeline_id: cdcPipelineId,
+        },
+      },
+    });
+    tasks.push({
+      task_key: 'cdc_scd2_pipeline',
+      depends_on: [{ task_key: 'selective_pipeline_refresh' }],
+      pipeline_task: { pipeline_id: cdcPipelineId, full_refresh: false },
+    });
+  }
+  // performance_target is job-wide and applies to every serverless task, including a serverless pipeline task.
+  const serverlessPipelineTask = Boolean(cdcPipelineId) && body.pipelineCompute.mode === 'SERVERLESS';
+  const settings: jobs.JobSettings = {
+    name,
+    max_concurrent_runs: 1,
+    ...(body.compute.mode === 'SERVERLESS' || serverlessPipelineTask
+      ? { performance_target: body.compute.performanceTarget }
+      : {}),
+    ...(body.compute.mode === 'SERVERLESS'
+      ? {
+          environments: [
+            {
+              environment_key: environmentKey,
+              spec: { environment_version: '4', dependencies: [dependency] },
+            },
+          ],
+        }
+      : {
+          job_clusters: [
+            {
+              job_cluster_key: jobClusterKey,
+              new_cluster: {
+                spark_version: body.compute.sparkVersion,
+                driver_node_type_id: body.compute.driverNodeTypeId,
+                node_type_id: body.compute.workerNodeTypeId,
+                autoscale: {
+                  min_workers: body.compute.minWorkers,
+                  max_workers: body.compute.maxWorkers,
+                },
+              },
+            },
+          ],
+        }),
+    parameters: [
+      { name: 'configuration_fqn', default: configurationFqn },
+      { name: 'watermark_fqn', default: watermarkFqn },
+      { name: 'ingestion_group', default: body.ingestionGroup },
+      { name: 'full_refresh', default: 'false' },
+    ],
+    tasks,
+    ...(jobRunAs ? { run_as: jobRunAs } : {}),
+    git_source: {
+      git_url: body.gitUrl,
+      git_provider: 'gitHub',
+      git_branch: body.gitBranch,
+    },
+    ...(body.schedule.enabled
+      ? {
+          schedule: {
+            quartz_cron_expression: body.schedule.quartzCronExpression,
+            timezone_id: body.schedule.timezoneId,
+            pause_status: body.schedule.pauseStatus,
+          },
+        }
+      : {}),
+  };
+  const existing = [];
+  for await (const job of workspace.jobs.list({ name, limit: 25, expand_tasks: false })) {
+    if (job.settings?.name === name) existing.push(job);
+  }
+  const existingJobId = existing[0]?.job_id;
+  let jobId = existingJobId;
+  if (existingJobId) {
+    await workspace.jobs.reset({ job_id: existingJobId, new_settings: settings });
+  } else {
+    jobId = (await workspace.jobs.create(settings as jobs.CreateJob)).job_id;
+  }
+  const action: 'created' | 'updated' = existingJobId ? 'updated' : 'created';
+  logger.info('jobs.saved', {
+    action,
+    jobId,
+    name,
+    ingestionGroup: body.ingestionGroup,
+    cdcPipelineId,
+    computeMode: body.compute.mode,
+    jobRunAs: body.runAs.job.mode,
+    pipelineRunAs: body.runAs.pipeline.mode,
+  });
+  return { jobId, pipelineId: cdcPipelineId, action };
+}
+
+const defaultSchedule = {
+  enabled: false,
+  quartzCronExpression: '0 0 8 * * ?',
+  timezoneId: 'America/New_York',
+  pauseStatus: 'UNPAUSED',
+} as const;
+const servicePrincipalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const runAsIdentity = (runAs?: { user_name?: string; service_principal_name?: string }) =>
+  runAs?.user_name ?? runAs?.service_principal_name;
+// The app service principal creates (and so owns) every generated resource; running as it is what DEFAULT means.
+const runAsTarget = (identity: string | undefined, creator: string | undefined) =>
+  !identity || identity === creator
+    ? ({ mode: 'DEFAULT', principal: '' } as const)
+    : servicePrincipalId.test(identity)
+      ? ({ mode: 'SERVICE_PRINCIPAL', principal: identity } as const)
+      : ({ mode: 'USER', principal: identity } as const);
+
+/**
+ * Reads back the settings a group's job was generated from, so they can be exported and re-created elsewhere.
+ * Only jobs that point at this location's config table count; returns null when the group has none.
+ */
+async function readGroupJobSettings(ingestionGroup: string, configurationFqn: string): Promise<JobSettings | null> {
+  const name = jobName(ingestionGroup);
+  for await (const listed of workspace.jobs.list({ name, limit: 25, expand_tasks: false })) {
+    if (listed.settings?.name !== name || !listed.job_id) continue;
+    const job = await workspace.jobs.get({ job_id: listed.job_id });
+    const settings = job.settings;
+    const parameters = new Map((settings?.parameters ?? []).map((item) => [item.name, item.default]));
+    if (!settings?.git_source?.git_url || parameters.get('configuration_fqn') !== configurationFqn) continue;
+
+    const tasks = settings.tasks ?? [];
+    const cluster = settings.job_clusters?.find((item) => item.job_cluster_key === jobClusterKey)?.new_cluster;
+    const pipelineId = tasks.find((task) => task.pipeline_task)?.pipeline_task?.pipeline_id;
+    const pipeline = pipelineId
+      ? await workspace.pipelines.get({ pipeline_id: pipelineId }).catch((error: unknown) => {
+          logger.warn('transfer.pipeline_unreadable', { ingestionGroup, pipelineId, error: serializeError(error) });
+          return undefined;
+        })
+      : undefined;
+    // A pipeline with the generated name was provisioned by WaterSync and is re-provisioned on import; any other
+    // pipeline was supplied by ID and is kept as is.
+    const generatedPipeline = pipeline?.name === cdcPipelineName(ingestionGroup);
+    const pipelineCluster =
+      pipeline?.spec?.clusters?.find((item) => item.label === 'default') ?? pipeline?.spec?.clusters?.[0];
+    const jobIdentity = job.run_as_user_name ?? runAsIdentity(settings.run_as) ?? job.creator_user_name;
+    const pipelineIdentity =
+      pipeline?.run_as_user_name ?? runAsIdentity(pipeline?.run_as) ?? pipeline?.creator_user_name;
+    const performanceTarget = settings.performance_target ?? 'STANDARD';
+    return {
+      ingestionGroup,
+      gitUrl: settings.git_source.git_url,
+      gitBranch: settings.git_source.git_branch ?? 'main',
+      foreachConcurrency: tasks.find((task) => task.task_key === 'ingestion_worker')?.for_each_task?.concurrency ?? 1,
+      cdcPipelineId: pipelineId && !generatedPipeline ? pipelineId : null,
+      schedule: settings.schedule
+        ? {
+            enabled: true,
+            quartzCronExpression: settings.schedule.quartz_cron_expression,
+            timezoneId: settings.schedule.timezone_id,
+            pauseStatus: settings.schedule.pause_status ?? 'UNPAUSED',
+          }
+        : defaultSchedule,
+      compute: cluster
+        ? {
+            mode: 'JOB_CLUSTER',
+            performanceTarget,
+            sparkVersion: cluster.spark_version ?? '',
+            driverNodeTypeId: cluster.driver_node_type_id ?? cluster.node_type_id ?? '',
+            workerNodeTypeId: cluster.node_type_id ?? '',
+            minWorkers: cluster.autoscale?.min_workers ?? cluster.num_workers ?? 1,
+            maxWorkers: cluster.autoscale?.max_workers ?? Math.max(cluster.num_workers ?? 1, 1),
+          }
+        : {
+            mode: 'SERVERLESS',
+            performanceTarget,
+            sparkVersion: '',
+            driverNodeTypeId: '',
+            workerNodeTypeId: '',
+            minWorkers: 1,
+            maxWorkers: 4,
+          },
+      pipelineCompute:
+        generatedPipeline && pipeline?.spec?.serverless === false
+          ? {
+              mode: 'CLASSIC',
+              nodeTypeId: pipelineCluster?.node_type_id ?? '',
+              driverNodeTypeId: pipelineCluster?.driver_node_type_id ?? pipelineCluster?.node_type_id ?? '',
+              minWorkers: pipelineCluster?.autoscale?.min_workers ?? pipelineCluster?.num_workers ?? 1,
+              maxWorkers: pipelineCluster?.autoscale?.max_workers ?? Math.max(pipelineCluster?.num_workers ?? 1, 1),
+              photon: pipeline.spec.photon ?? false,
+            }
+          : { mode: 'SERVERLESS', nodeTypeId: '', driverNodeTypeId: '', minWorkers: 1, maxWorkers: 4, photon: false },
+      runAs: {
+        job: runAsTarget(jobIdentity, job.creator_user_name),
+        // The run-as of a pipeline supplied by ID is not WaterSync's to set.
+        pipeline:
+          !generatedPipeline || pipelineIdentity === jobIdentity
+            ? { mode: 'SAME_AS_JOB', principal: '' }
+            : runAsTarget(pipelineIdentity, pipeline.creator_user_name),
+      },
+    };
+  }
+  return null;
+}
+
+/** Job settings of every listed group that has a generated job for this location. */
+export async function readJobSettings(catalog: string, schema: string, ingestionGroups: string[]) {
+  const configurationFqn = `${catalog}.${schema}.jdbc_ingestion_config`;
+  const result: JobSettings[] = [];
+  for (let offset = 0; offset < ingestionGroups.length; offset += 8) {
+    const batch = ingestionGroups.slice(offset, offset + 8);
+    const settings = await Promise.all(batch.map((group) => readGroupJobSettings(group, configurationFqn)));
+    result.push(...settings.filter((item) => item !== null));
+  }
+  return result;
+}

@@ -28,24 +28,26 @@ import {
   SelectValue,
   Skeleton,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  ToggleGroup,
+  ToggleGroupItem,
   useAnalyticsQuery,
 } from '@databricks/appkit-ui/react';
-import {
-  Clock3,
-  ExternalLink,
-  Play,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
+import { Clock3, ExternalLink, LayoutGrid, List, Play, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../lib/api';
 import { reportError, useReportedFailure } from '../lib/logging';
 import type { JobRow, Location } from '../types';
 import { fqn, displayTime, runStatus, statusVariant, runDuration, formString } from '../utils';
-import { useControl } from './Layout';
+import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ScheduleFields } from './shared';
 
 export function JobsPage() {
@@ -56,6 +58,7 @@ export function JobsPage() {
   const [open, setOpen] = useState(false);
   const [runningJob, setRunningJob] = useState<number | null>(null);
   const [scheduleJob, setScheduleJob] = useState<JobRow | null>(null);
+  const [view, setView] = useJobsView();
   const groupParams = useMemo(
     () => ({
       table_name: sql.string(fqn(location, 'jdbc_ingestion_config')),
@@ -77,10 +80,11 @@ export function JobsPage() {
       .catch((e: unknown) => setError(reportError('jobs.list', e)))
       .finally(() => setLoading(false));
   };
+  // Reload on refresh too, e.g. after an import from the header created or updated jobs.
   useEffect(() => {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [revision]);
   const run = async (id: number, fullRefresh = false) => {
     setRunningJob(id);
     try {
@@ -96,16 +100,42 @@ export function JobsPage() {
       setRunningJob(null);
     }
   };
+  const actions: JobActionHandlers = {
+    runningJob,
+    run: (id, fullRefresh) => void run(id, fullRefresh),
+    editSchedule: setScheduleJob,
+  };
   return (
     <>
       <PageTitle
         title="WaterSync Lakeflow Jobs"
         description="Monitor recent run health, trigger ingestion, or open the full job in Databricks."
         action={
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create job
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={view}
+              onValueChange={(value) => {
+                // Clicking the selected item would deselect it; keep one view selected.
+                if (value === 'blocks' || value === 'list') setView(value);
+              }}
+              aria-label="Job view"
+            >
+              <ToggleGroupItem value="blocks" aria-label="Blocks view" title="Blocks: one card per job">
+                <LayoutGrid className="mr-2 h-4 w-4" />
+                Blocks
+              </ToggleGroupItem>
+              <ToggleGroupItem value="list" aria-label="List view" title="List: one row per job">
+                <List className="mr-2 h-4 w-4" />
+                List
+              </ToggleGroupItem>
+            </ToggleGroup>
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create job
+            </Button>
+          </div>
         }
       />
       {error && <ErrorState message={error} />}{' '}
@@ -120,125 +150,12 @@ export function JobsPage() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      ) : view === 'list' ? (
+        <JobList jobs={jobs} actions={actions} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {jobs.map((job) => (
-            <Card key={job.job_id} className="job-card">
-              <CardHeader>
-                <div className="flex justify-between gap-4">
-                  <div>
-                    <CardTitle>{job.settings?.name ?? `Job ${job.job_id}`}</CardTitle>
-                    <CardDescription>
-                      ID {job.job_id} {'\u00b7'} created {displayTime(job.created_time)}
-                    </CardDescription>
-                  </div>
-                  <Badge variant={statusVariant(runStatus(job.runs[0]))}>
-                    {runStatus(job.runs[0]).replaceAll('_', ' ')}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="rounded-md border bg-muted/30 p-3">
-                  <div className="mb-1 flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="text-sm font-medium">Schedule</span>
-                      {job.settings?.schedule && (
-                        <span className="truncate font-mono text-xs text-foreground">
-                          {job.settings.schedule.quartz_cron_expression}
-                        </span>
-                      )}
-                    </div>
-                    <Badge variant={job.settings?.schedule?.pause_status === 'UNPAUSED' ? 'secondary' : 'outline'}>
-                      {!job.settings?.schedule
-                        ? 'Manual only'
-                        : job.settings.schedule.pause_status === 'UNPAUSED'
-                          ? 'Active'
-                          : 'Paused'}
-                    </Badge>
-                  </div>
-                  {job.settings?.schedule ? (
-                    <div className="text-xs text-muted-foreground">{job.settings.schedule.timezone_id}</div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Runs only when manually triggered.</p>
-                  )}
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Last 10 runs</span>
-                    <span>Newest on the right</span>
-                  </div>
-                  {job.runs.length ? (
-                    <div
-                      className="run-timeline"
-                      aria-label={`Recent run status for ${job.settings?.name ?? `job ${job.job_id}`}`}
-                    >
-                      {[...job.runs].reverse().map((recentRun) => {
-                        const status = runStatus(recentRun);
-                        const label = `${status.replaceAll('_', ' ')} \u00b7 ${displayTime(recentRun.start_time)} \u00b7 ${runDuration(recentRun)}`;
-                        return (
-                          <a
-                            key={recentRun.run_id}
-                            className={`run-mark run-mark-${status.toLowerCase()}`}
-                            title={label}
-                            aria-label={label}
-                            href={recentRun.run_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {status === 'RUNNING' ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
-                            ) : (
-                              <span>{status === 'SUCCESS' ? '\u2713' : '!'}</span>
-                            )}
-                          </a>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                      No runs recorded yet.
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Latest:{' '}
-                    {job.runs[0] ? `${displayTime(job.runs[0].start_time)} \u00b7 ${runDuration(job.runs[0])}` : 'Never run'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={!job.job_id || runningJob === job.job_id}
-                    onClick={() => {
-                      if (job.job_id) void run(job.job_id);
-                    }}
-                  >
-                    <Play className="mr-2 h-4 w-4" />
-                    {runningJob === job.job_id ? 'Starting\u2026' : 'Run now'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={!job.job_id || runningJob === job.job_id}
-                    onClick={() => {
-                      if (job.job_id && confirm('Run a full refresh? Staging will be replaced with a fresh snapshot and CDC will reprocess from scratch.')) {
-                        void run(job.job_id, true);
-                      }
-                    }}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Full refresh
-                  </Button>
-                  <Button variant="outline" asChild>
-                    <a href={job.workspace_url} target="_blank" rel="noreferrer">
-                      Open in Databricks
-                      <ExternalLink className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
-                  <Button variant="outline" onClick={() => setScheduleJob(job)} disabled={!job.job_id}>
-                    <Clock3 className="mr-2 h-4 w-4" />
-                    Edit schedule
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <JobCard key={job.job_id} job={job} actions={actions} />
           ))}
         </div>
       )}
@@ -263,6 +180,279 @@ export function JobsPage() {
         }}
       />
     </>
+  );
+}
+
+type JobActionHandlers = {
+  runningJob: number | null;
+  run: (jobId: number, fullRefresh?: boolean) => void;
+  editSchedule: (job: JobRow) => void;
+};
+
+type JobsView = 'blocks' | 'list';
+const jobsViewKey = 'watersync-jobs-view';
+
+/** The selected view, remembered in this browser. Defaults to blocks. */
+function useJobsView() {
+  const [view, setView] = useState<JobsView>(() => {
+    try {
+      return window.localStorage.getItem(jobsViewKey) === 'list' ? 'list' : 'blocks';
+    } catch {
+      return 'blocks';
+    }
+  });
+  const select = (next: JobsView) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(jobsViewKey, next);
+    } catch {
+      // Storage may be unavailable (private mode); the choice then lasts until reload.
+    }
+  };
+  return [view, select] as const;
+}
+
+const jobName = (job: JobRow) => job.settings?.name ?? `Job ${job.job_id}`;
+const fullRefreshPrompt =
+  'Run a full refresh? Staging will be replaced with a fresh snapshot and CDC will reprocess from scratch.';
+
+function StatusBadge({ job }: { job: JobRow }) {
+  const status = runStatus(job.runs[0]);
+  return <Badge variant={statusVariant(status)}>{status.replaceAll('_', ' ')}</Badge>;
+}
+
+function ScheduleBadge({ job }: { job: JobRow }) {
+  const schedule = job.settings?.schedule;
+  return (
+    <Badge variant={schedule?.pause_status === 'UNPAUSED' ? 'secondary' : 'outline'}>
+      {!schedule ? 'Manual only' : schedule.pause_status === 'UNPAUSED' ? 'Active' : 'Paused'}
+    </Badge>
+  );
+}
+
+function RunTimeline({ job, compact = false }: { job: JobRow; compact?: boolean }) {
+  return (
+    <div
+      className={compact ? 'run-timeline run-timeline-compact' : 'run-timeline'}
+      aria-label={`Recent run status for ${job.settings?.name ?? `job ${job.job_id}`}`}
+    >
+      {[...job.runs].reverse().map((recentRun) => {
+        const status = runStatus(recentRun);
+        const label = `${status.replaceAll('_', ' ')} · ${displayTime(recentRun.start_time)} · ${runDuration(recentRun)}`;
+        return (
+          <a
+            key={recentRun.run_id}
+            className={`run-mark run-mark-${status.toLowerCase()}`}
+            title={label}
+            aria-label={label}
+            href={recentRun.run_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {status === 'RUNNING' ? (
+              <RefreshCw className={compact ? 'h-3 w-3 animate-spin' : 'h-4 w-4 animate-spin'} aria-hidden="true" />
+            ) : (
+              <span>{status === 'SUCCESS' ? '✓' : '!'}</span>
+            )}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+const latestRun = (job: JobRow) =>
+  job.runs[0] ? `${displayTime(job.runs[0].start_time)} · ${runDuration(job.runs[0])}` : 'Never run';
+
+/** Run, full refresh, open and schedule actions. Compact renders icon-only buttons for table rows. */
+function JobActions({ job, actions, compact = false }: { job: JobRow; actions: JobActionHandlers; compact?: boolean }) {
+  const name = jobName(job);
+  const starting = actions.runningJob === job.job_id;
+  const busy = !job.job_id || starting;
+  const fullRefresh = () => {
+    if (job.job_id && confirm(fullRefreshPrompt)) actions.run(job.job_id, true);
+  };
+  if (compact) {
+    return (
+      <div className="flex justify-end gap-1">
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => job.job_id && actions.run(job.job_id)}
+          aria-label={`Run ${name} now`}
+          title={starting ? 'Starting…' : 'Run now'}
+        >
+          {starting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={busy}
+          onClick={fullRefresh}
+          aria-label={`Full refresh of ${name}`}
+          title="Full refresh"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={!job.job_id}
+          onClick={() => actions.editSchedule(job)}
+          aria-label={`Edit schedule of ${name}`}
+          title="Edit schedule"
+        >
+          <Clock3 className="h-4 w-4" />
+        </Button>
+        <Button size="icon" variant="ghost" asChild>
+          <a
+            href={job.workspace_url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open ${name} in Databricks`}
+            title="Open in Databricks"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={busy} onClick={() => job.job_id && actions.run(job.job_id)}>
+        <Play className="mr-2 h-4 w-4" />
+        {starting ? 'Starting…' : 'Run now'}
+      </Button>
+      <Button variant="outline" disabled={busy} onClick={fullRefresh}>
+        <RefreshCw className="mr-2 h-4 w-4" />
+        Full refresh
+      </Button>
+      <Button variant="outline" asChild>
+        <a href={job.workspace_url} target="_blank" rel="noreferrer">
+          Open in Databricks
+          <ExternalLink className="ml-2 h-4 w-4" />
+        </a>
+      </Button>
+      <Button variant="outline" onClick={() => actions.editSchedule(job)} disabled={!job.job_id}>
+        <Clock3 className="mr-2 h-4 w-4" />
+        Edit schedule
+      </Button>
+    </div>
+  );
+}
+
+function JobCard({ job, actions }: { job: JobRow; actions: JobActionHandlers }) {
+  return (
+    <Card className="job-card">
+      <CardHeader>
+        <div className="flex justify-between gap-4">
+          <div>
+            <CardTitle>{jobName(job)}</CardTitle>
+            <CardDescription>
+              ID {job.job_id} {'·'} created {displayTime(job.created_time)}
+            </CardDescription>
+          </div>
+          <StatusBadge job={job} />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="rounded-md border bg-muted/30 p-3">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="text-sm font-medium">Schedule</span>
+              {job.settings?.schedule && (
+                <span className="truncate font-mono text-xs text-foreground">
+                  {job.settings.schedule.quartz_cron_expression}
+                </span>
+              )}
+            </div>
+            <ScheduleBadge job={job} />
+          </div>
+          {job.settings?.schedule ? (
+            <div className="text-xs text-muted-foreground">{job.settings.schedule.timezone_id}</div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Runs only when manually triggered.</p>
+          )}
+        </div>
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Last 10 runs</span>
+            <span>Newest on the right</span>
+          </div>
+          {job.runs.length ? (
+            <RunTimeline job={job} />
+          ) : (
+            <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No runs recorded yet.</p>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">Latest: {latestRun(job)}</p>
+        </div>
+        <JobActions job={job} actions={actions} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One row per job, so many jobs can be compared at a glance. */
+function JobList({ jobs, actions }: { jobs: JobRow[]; actions: JobActionHandlers }) {
+  return (
+    <Card>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Schedule</TableHead>
+            <TableHead title="Newest on the right">Last 10 runs</TableHead>
+            <TableHead className="hidden xl:table-cell">Latest run</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {jobs.map((job) => {
+            const schedule = job.settings?.schedule;
+            return (
+              <TableRow key={job.job_id} className="whitespace-nowrap">
+                <TableCell className="max-w-48 lg:max-w-64">
+                  <div className="truncate font-medium" title={jobName(job)}>
+                    {jobName(job)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">ID {job.job_id}</div>
+                </TableCell>
+                <TableCell>
+                  <StatusBadge job={job} />
+                </TableCell>
+                <TableCell>
+                  <div
+                    className="flex items-center gap-2"
+                    title={schedule ? `${schedule.quartz_cron_expression} (${schedule.timezone_id})` : undefined}
+                  >
+                    <ScheduleBadge job={job} />
+                    {schedule && (
+                      <span className="hidden font-mono text-xs text-muted-foreground xl:inline">
+                        {schedule.quartz_cron_expression}
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {job.runs.length ? (
+                    <RunTimeline job={job} compact />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No runs yet</span>
+                  )}
+                </TableCell>
+                <TableCell className="hidden text-xs text-muted-foreground xl:table-cell">{latestRun(job)}</TableCell>
+                <TableCell>
+                  <JobActions job={job} actions={actions} compact />
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </Card>
   );
 }
 
@@ -302,9 +492,7 @@ function JobDialog({
   const [pipelinePhoton, setPipelinePhoton] = useState(false);
   const [jobRunAsMode, setJobRunAsMode] = useState('DEFAULT');
   const [pipelineRunAsMode, setPipelineRunAsMode] = useState('SAME_AS_JOB');
-  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(
-    null
-  );
+  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(null);
   useEffect(() => {
     if (!open || (computeMode !== 'JOB_CLUSTER' && pipelineComputeMode !== 'CLASSIC') || nodeTypes) return;
     // Best effort: without the list the node type fields stay empty and must be filled in manually.
@@ -397,15 +585,13 @@ function JobDialog({
             Select a configured ingestion group. WaterSync generates the parameters and task graph automatically.
           </DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={(event) => void submit(event)}
-          onInvalidCapture={revealInvalidField}
-          className="space-y-4"
-        >
+        <form onSubmit={(event) => void submit(event)} onInvalidCapture={revealInvalidField} className="space-y-4">
           {error && <ErrorState message={error} />}
           {groupsError && <ErrorState message={groupsError} />}
           <datalist id="node-type-options">
-            {nodeTypes?.nodeTypeIds.map((id) => <option key={id} value={id} />)}
+            {nodeTypes?.nodeTypeIds.map((id) => (
+              <option key={id} value={id} />
+            ))}
           </datalist>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className={`grid w-full ${tabColumns[tabCount]}`}>
@@ -448,8 +634,8 @@ function JobDialog({
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Generated job</CardTitle>
                     <CardDescription>
-                      [{selectedGroup.ingestion_group}] Ingestion Pipeline {'\u00b7'} {selectedGroup.source_count} configured
-                      sources
+                      [{selectedGroup.ingestion_group}] Ingestion Pipeline {'\u00b7'} {selectedGroup.source_count}{' '}
+                      configured sources
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 text-sm text-muted-foreground md:grid-cols-2">
@@ -576,8 +762,8 @@ function JobDialog({
                 <p className="text-xs text-muted-foreground md:col-span-2">
                   The owner is the app service principal that creates the job and SDP pipeline. Running as another user
                   requires workspace admin rights for the app; running as another service principal requires the app to
-                  have the Service Principal User role on it. The SDP setting is ignored when an existing SDP
-                  pipeline ID is provided.
+                  have the Service Principal User role on it. The SDP setting is ignored when an existing SDP pipeline
+                  ID is provided.
                 </p>
               </div>
             </TabsContent>
@@ -648,15 +834,20 @@ function JobDialog({
                       <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
                     </div>
                     <p className="text-xs text-muted-foreground md:col-span-2">
-                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its
-                      own pipeline compute.
+                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses
+                      its own pipeline compute.
                     </p>
                   </div>
                 )}
               </div>
             </TabsContent>
             {hasCdcPipeline && (
-              <TabsContent value="pipeline" data-tab="pipeline" forceMount className="mt-4 data-[state=inactive]:hidden">
+              <TabsContent
+                value="pipeline"
+                data-tab="pipeline"
+                forceMount
+                className="mt-4 data-[state=inactive]:hidden"
+              >
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="pipeline-compute-mode">SDP compute</Label>
@@ -687,39 +878,53 @@ function JobDialog({
                   )}
                   {pipelineComputeMode === 'CLASSIC' && (
                     <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
-                      <Input
-                        key={`pipeline-worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="pipeline-node-type"
-                        name="pipelineNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
-                      <Input
-                        key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="pipeline-driver-node-type"
-                        name="pipelineDriverNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
-                      <Input id="pipeline-min-workers" name="pipelineMinWorkers" type="number" min="0" defaultValue="1" required />
-                    </div>
-                        <div className="space-y-2">
-                      <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
-                      <Input id="pipeline-max-workers" name="pipelineMaxWorkers" type="number" min="1" defaultValue="4" required />
-                    </div>
-                          <div className="flex items-center gap-2 md:col-span-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-node-type">Pipeline worker node type</Label>
+                        <Input
+                          key={`pipeline-worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                          id="pipeline-node-type"
+                          name="pipelineNodeTypeId"
+                          list="node-type-options"
+                          defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                          placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-driver-node-type">Pipeline driver node type</Label>
+                        <Input
+                          key={`pipeline-driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
+                          id="pipeline-driver-node-type"
+                          name="pipelineDriverNodeTypeId"
+                          list="node-type-options"
+                          defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
+                          placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-min-workers">Pipeline minimum workers</Label>
+                        <Input
+                          id="pipeline-min-workers"
+                          name="pipelineMinWorkers"
+                          type="number"
+                          min="0"
+                          defaultValue="1"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pipeline-max-workers">Pipeline maximum workers</Label>
+                        <Input
+                          id="pipeline-max-workers"
+                          name="pipelineMaxWorkers"
+                          type="number"
+                          min="1"
+                          defaultValue="4"
+                          required
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 md:col-span-2">
                         <Switch
                           id="pipeline-photon"
                           checked={pipelinePhoton}
@@ -827,7 +1032,9 @@ function RunAsFields({
           type={mode === 'USER' ? 'email' : 'text'}
           pattern={mode === 'SERVICE_PRINCIPAL' ? '[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}' : undefined}
           title={mode === 'SERVICE_PRINCIPAL' ? 'Service principal application ID (UUID)' : undefined}
-          placeholder={mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'}
+          placeholder={
+            mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'
+          }
           required
         />
       )}

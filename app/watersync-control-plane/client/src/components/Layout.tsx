@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useOutletContext } from 'react-router';
+import { NavLink, Outlet } from 'react-router';
 import {
   Badge,
   Button,
@@ -19,6 +19,8 @@ import { reportWarning } from '../lib/logging';
 import type { Context, Location } from '../types';
 import { readLocation, writeLocation } from '../utils';
 import { LandingPage } from './LandingPage';
+import { ExportButton, ImportButton } from './ConfigTransfer';
+import { ReleaseNotice } from './ReleaseNotice';
 
 export function Layout() {
   const [location, setLocationState] = useState<Location | null>(readLocation);
@@ -65,8 +67,14 @@ export function Layout() {
               <Droplets className="h-5 w-5" />
             </div>
             <div>
-              <div className="brand-name">
-                WaterSync <span>Control Plane</span>
+              <div className="flex items-center gap-2">
+                <div className="brand-name">
+                  WaterSync <span>Control Plane</span>
+                </div>
+                <span className="brand-version" title={`Built ${new Date(__APP_BUILD_TIME__).toLocaleString()}`}>
+                  v{__APP_VERSION__}
+                </span>
+                <ReleaseNotice currentVersion={__APP_VERSION__} />
               </div>
               <div className="brand-subtitle">JDBC ingestion control plane</div>
             </div>
@@ -115,6 +123,8 @@ export function Layout() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <ExportButton location={location} />
+          <ImportButton location={location} onImported={() => setRevision((v) => v + 1)} />
         </div>
         <div className="nav-strip">
           <nav className="mx-auto flex max-w-screen-2xl gap-1 overflow-x-auto px-6">
@@ -138,5 +148,3 @@ export function Layout() {
     </div>
   );
 }
-
-export const useControl = () => useOutletContext<Context>();

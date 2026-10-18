@@ -10,7 +10,7 @@ const lastRecord = (spy: ReturnType<typeof capture>) => {
 };
 
 const fakeRequest = (overrides: Partial<Request> = {}) =>
-  ({ method: 'POST', path: '/api/config', headers: {}, ...overrides }) as unknown as Request;
+  ({ method: 'POST', path: '/api/config', headers: {}, ...overrides }) as Request;
 
 const fakeResponse = () => {
   const sent: { status?: number; body?: unknown } = {};
@@ -25,7 +25,7 @@ const fakeResponse = () => {
       return response;
     },
   };
-  return { response: response as unknown as Response, sent };
+  return { response: response as Response, sent };
 };
 
 afterEach(() => {

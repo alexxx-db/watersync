@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
 export const identifierPart = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
-const coercedBoolean = z.preprocess(
-  (val) => (typeof val === 'string' ? val === 'true' : val),
-  z.boolean()
-);
+const coercedBoolean = z.preprocess((val) => (typeof val === 'string' ? val === 'true' : val), z.boolean());
 export const locationSchema = z.object({ catalog: identifierPart, schema: identifierPart });
 export const configSchema = locationSchema
   .extend({
@@ -93,7 +90,11 @@ export const sourceDiscoverySchema = z
     if (!value.ucSecretName) {
       for (const field of ['jdbcSecretScope', 'jdbcSecretKey'] as const) {
         if (!value[field]) {
-          context.addIssue({ code: 'custom', path: [field], message: 'Required for direct JDBC discovery (or provide ucSecretName)' });
+          context.addIssue({
+            code: 'custom',
+            path: [field],
+            message: 'Required for direct JDBC discovery (or provide ucSecretName)',
+          });
         }
       }
     }
@@ -115,7 +116,10 @@ export const sourceColumnsBatchSchema = sourceDiscoverySchema.extend({
     .min(1)
     .max(10),
 });
-export const keySchema = locationSchema.extend({ ingestionGroup: z.string().min(1), sourceTableName: z.string().min(1) });
+export const keySchema = locationSchema.extend({
+  ingestionGroup: z.string().min(1),
+  sourceTableName: z.string().min(1),
+});
 export const watermarkSchema = keySchema.extend({ lastWatermark: z.string().nullable(), status: z.string().min(1) });
 export const cronExpression = z
   .string()
@@ -169,7 +173,8 @@ export const pipelineComputeSchema = z
       ['nodeTypeId', value.nodeTypeId],
       ['driverNodeTypeId', value.driverNodeTypeId],
     ] as const) {
-      if (!fieldValue) context.addIssue({ code: 'custom', path: [field], message: 'Required for classic pipeline compute' });
+      if (!fieldValue)
+        context.addIssue({ code: 'custom', path: [field], message: 'Required for classic pipeline compute' });
     }
     if (value.maxWorkers < value.minWorkers) {
       context.addIssue({
@@ -181,7 +186,10 @@ export const pipelineComputeSchema = z
   });
 const runAsPrincipalIssue = (mode: string, principal: string) => {
   if (mode === 'USER' && !/^[^\s@]+@[^\s@]+$/.test(principal)) return 'Enter the user email';
-  if (mode === 'SERVICE_PRINCIPAL' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(principal)) {
+  if (
+    mode === 'SERVICE_PRINCIPAL' &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(principal)
+  ) {
     return 'Enter the service principal application ID';
   }
   return null;
@@ -225,6 +233,31 @@ export const jobPayloadSchema = locationSchema.extend({
 });
 export const jobSchedulePayloadSchema = scheduleSchema.extend({ jobId: z.number().int().positive() });
 
+// Entries are kept loose here and validated one by one against configSchema / jobPayloadSchema, with the
+// import's target location filled in, so a file exported from one catalog.schema can be loaded into another.
+export const transferFormat = 'watersync-config';
+export const transferVersion = 1;
+export const transferFileSchema = z.object({
+  format: z.literal(transferFormat, { error: 'Not a WaterSync configuration export' }),
+  version: z.literal(transferVersion, { error: `Unsupported export version (expected ${transferVersion})` }),
+  configs: z.array(z.record(z.string(), z.unknown())).max(5000).optional().default([]),
+  jobs: z.array(z.record(z.string(), z.unknown())).max(500).optional().default([]),
+});
+export const importPayloadSchema = locationSchema.extend({
+  file: transferFileSchema,
+  // Delete rows of the imported groups that are not in the file, so each group matches the file exactly.
+  replaceGroups: z.boolean().optional().default(false),
+  // Create or update the Databricks job (and CDC pipeline) of every group with job settings in the file.
+  deployJobs: z.boolean().optional().default(false),
+  // Validate and summarize without writing anything.
+  dryRun: z.boolean().optional().default(false),
+});
+
 export type SourceDiscovery = z.infer<typeof sourceDiscoverySchema>;
 export type SourceDatabaseType = z.infer<typeof sourceDatabaseType>;
 export type PipelineCompute = z.infer<typeof pipelineComputeSchema>;
+export type Schedule = z.infer<typeof scheduleSchema>;
+export type ConfigPayload = z.infer<typeof configSchema>;
+export type JobPayload = z.infer<typeof jobPayloadSchema>;
+/** Job settings as stored and exported: the job payload without the location it was deployed to. */
+export type JobSettings = Omit<JobPayload, 'catalog' | 'schema'>;

@@ -44,7 +44,10 @@ export const jdbcEndpoint = (databaseType: SourceDiscovery['databaseType'], jdbc
   return { host: match[1], port: match[2] ?? (databaseType === 'postgresql' ? '5432' : '3306') };
 };
 
-export async function withDiscoveryConnection<T>(body: SourceDiscovery, action: (connectionName: string) => Promise<T>) {
+export async function withDiscoveryConnection<T>(
+  body: SourceDiscovery,
+  action: (connectionName: string) => Promise<T>
+) {
   if (body.connectionName) return action(body.connectionName);
 
   const endpoint = jdbcEndpoint(body.databaseType, body.jdbcUrl);
@@ -63,7 +66,9 @@ export async function withDiscoveryConnection<T>(body: SourceDiscovery, action: 
     const secretUrl = `${workspaceBaseUrl()}/api/2.1/unity-catalog/secrets/${body.ucSecretName}?include_value=true`;
     const secretResponse = await fetch(secretUrl, { headers: authHeaders });
     if (!secretResponse.ok) {
-      throw new Error(`Failed to retrieve UC secret '${body.ucSecretName}': ${secretResponse.status} ${await secretResponse.text()}`);
+      throw new Error(
+        `Failed to retrieve UC secret '${body.ucSecretName}': ${secretResponse.status} ${await secretResponse.text()}`
+      );
     }
     const secretData = (await secretResponse.json()) as { effective_value?: string };
     if (!secretData.effective_value) {
@@ -136,8 +141,7 @@ export const listTablesSql = (databaseType: SourceDatabaseType, tableFilter: str
 
 // remote_query wraps the statement as a derived table, and SQL Server rejects ORDER BY there
 // unless TOP, OFFSET or FOR XML is present.
-const orderBySuffix = (databaseType: SourceDatabaseType) =>
-  databaseType === 'sqlserver' ? ' OFFSET 0 ROWS' : '';
+const orderBySuffix = (databaseType: SourceDatabaseType) => (databaseType === 'sqlserver' ? ' OFFSET 0 ROWS' : '');
 
 export const columnsSql = (databaseType: SourceDatabaseType, sourceSchema: string, table: string) => {
   const schema = sqlLiteral(sourceSchema);

@@ -37,27 +37,17 @@ const migrationsTable = '_watersync_migrations';
  * The caller should cache the result per location to avoid repeated warehouse
  * round-trips.
  */
-export async function runMigrations(
-  ctx: MigrationContext,
-  catalog: string,
-  schema: string
-): Promise<void> {
+export async function runMigrations(ctx: MigrationContext, catalog: string, schema: string): Promise<void> {
   const trackingTable = ctx.tableName(catalog, schema, migrationsTable);
 
   // Ensure the schema exists (catalog must already exist).
-  await ctx.execute(
-    `CREATE SCHEMA IF NOT EXISTS \`${catalog}\`.\`${schema}\``
-  );
+  await ctx.execute(`CREATE SCHEMA IF NOT EXISTS \`${catalog}\`.\`${schema}\``);
 
   // Ensure the tracking table exists.
-  await ctx.execute(
-    `CREATE TABLE IF NOT EXISTS ${trackingTable} (id STRING NOT NULL, applied_at TIMESTAMP)`
-  );
+  await ctx.execute(`CREATE TABLE IF NOT EXISTS ${trackingTable} (id STRING NOT NULL, applied_at TIMESTAMP)`);
 
   // Fetch already-applied migration ids.
-  const response = await ctx.execute(
-    `SELECT id FROM ${trackingTable}`
-  );
+  const response = await ctx.execute(`SELECT id FROM ${trackingTable}`);
   const rows = (response as { result?: { data_array?: string[][] } }).result?.data_array ?? [];
   const applied = new Set(rows.map((row) => row[0]));
 
@@ -74,9 +64,7 @@ export async function runMigrations(
     ctx.logger.info('migrations.run', { id: migration.id, description: migration.description });
     try {
       await migration.run(ctx, catalog, schema);
-      await ctx.execute(
-        `INSERT INTO ${trackingTable} VALUES ('${migration.id}', current_timestamp())`
-      );
+      await ctx.execute(`INSERT INTO ${trackingTable} VALUES ('${migration.id}', current_timestamp())`);
     } catch (error) {
       ctx.logger.warn('migrations.failed', {
         id: migration.id,

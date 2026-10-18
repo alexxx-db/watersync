@@ -1,5 +1,10 @@
 export type Location = { catalog: string; schema: string };
-export type Context = { location: Location; setLocation: (location: Location) => void; revision: number; refresh: () => void };
+export type Context = {
+  location: Location;
+  setLocation: (location: Location) => void;
+  revision: number;
+  refresh: () => void;
+};
 export type ConfigRow = {
   ingestion_group: string;
   source_table_name: string;
@@ -80,4 +85,22 @@ export type TableDraft = {
   targetFqn: string;
   stagingFqn: string;
 };
+/** Latest published WaterSync release, as returned by GET /api/latest-release. */
+export type LatestRelease = { version: string; name: string; notes: string; url: string; publishedAt: string | null };
 export type InferenceProgress = { completed: number; total: number };
+export type ImportGroupSummary = { ingestionGroup: string; configCount: number; hasJobSettings: boolean };
+export type ImportJobResult = {
+  ingestionGroup: string;
+  jobId?: number;
+  pipelineId?: string;
+  action?: 'created' | 'updated';
+  error?: string;
+};
+export type ImportResult = {
+  dryRun: boolean;
+  configCount: number;
+  jobCount: number;
+  groups: ImportGroupSummary[];
+  removedCount?: number;
+  jobs?: ImportJobResult[];
+};

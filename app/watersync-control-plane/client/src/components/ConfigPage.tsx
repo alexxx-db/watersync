@@ -43,15 +43,7 @@ import {
   TabsTrigger,
   useAnalyticsQuery,
 } from '@databricks/appkit-ui/react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Database,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { reportError, useReportedFailure } from '../lib/logging';
 import type { ConfigRow, Location, SourceTable, SourceColumn, TableDraft, InferenceProgress } from '../types';
@@ -66,8 +58,9 @@ import {
   sourceTableLimit,
   matchesTableFilter,
   toBool,
+  formString,
 } from '../utils';
-import { useControl } from './Layout';
+import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ControlledField, ColumnSelect, Field, Toggle } from './shared';
 
 export function ConfigPage() {
@@ -179,7 +172,7 @@ export function ConfigPage() {
                   <TableCell>{row.watermark_column ?? '\u2014'}</TableCell>
                   <TableCell>
                     <Badge variant={toBool(row.enabled) ? 'default' : 'secondary'}>
-                       {toBool(row.enabled) ? 'Enabled' : 'Disabled'}
+                      {toBool(row.enabled) ? 'Enabled' : 'Disabled'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -555,10 +548,12 @@ function DiscoveryDialog({
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
       <div>
         <div className="text-sm font-medium">
-          Tables {reviewPageStart + 1}{"\u2013"}{reviewPageStart + visibleDrafts.length} of {drafts.length}
+          Tables {reviewPageStart + 1}
+          {'\u2013'}
+          {reviewPageStart + visibleDrafts.length} of {drafts.length}
         </div>
         <div className="text-xs text-muted-foreground">
-          Page {reviewPage + 1} of {reviewPageCount} {"\u00b7"} up to 10 tables per confirmation
+          Page {reviewPage + 1} of {reviewPageCount} {'\u00b7'} up to 10 tables per confirmation
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -606,7 +601,7 @@ function DiscoveryDialog({
         <DialogHeader>
           <DialogTitle>Discover and configure source tables</DialogTitle>
           <DialogDescription>
-            Step {step} of 2 {"\u00b7"}{' '}
+            Step {step} of 2 {'\u00b7'}{' '}
             {step === 1
               ? 'Connect, discover, and choose the replication mode.'
               : 'Review inferred columns and runtime settings.'}
@@ -621,8 +616,8 @@ function DiscoveryDialog({
             <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
             <AlertTitle>Inspecting table metadata</AlertTitle>
             <AlertDescription>
-              {inferenceProgress.completed} of {inferenceProgress.total} tables inspected {"\u00b7"} pages of 10, one metadata
-              query per page.
+              {inferenceProgress.completed} of {inferenceProgress.total} tables inspected {'\u00b7'} pages of 10, one
+              metadata query per page.
             </AlertDescription>
           </Alert>
         )}
@@ -632,8 +627,8 @@ function DiscoveryDialog({
               <CardHeader>
                 <CardTitle className="text-base">Connection and ingestion group</CardTitle>
                 <CardDescription>
-                  Use an existing UC connection, a direct JDBC URL with a Databricks secret, or a JDBC URL with a
-                  UC secret for authentication.
+                  Use an existing UC connection, a direct JDBC URL with a Databricks secret, or a JDBC URL with a UC
+                  secret for authentication.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -726,9 +721,8 @@ function DiscoveryDialog({
                     <Alert className="md:col-span-2 xl:col-span-3">
                       <AlertTitle>UC secret-backed authentication</AlertTitle>
                       <AlertDescription>
-                        Provide the UC secret name as catalog.schema.secret_name. Do not include a password in the
-                        JDBC URL. Discovery creates and removes a temporary UC connection using this UC secret
-                        reference.
+                        Provide the UC secret name as catalog.schema.secret_name. Do not include a password in the JDBC
+                        URL. Discovery creates and removes a temporary UC connection using this UC secret reference.
                       </AlertDescription>
                     </Alert>
                   </>
@@ -1195,8 +1189,8 @@ function ConfigDialog({
       setError(
         reportError('config.save', x, {
           ...location,
-          ingestionGroup: String(f.get('group') ?? ''),
-          sourceTableName: String(f.get('source') ?? ''),
+          ingestionGroup: formString(f, 'group', ''),
+          sourceTableName: formString(f, 'source', ''),
           ingestionType,
         })
       );
@@ -1306,7 +1300,12 @@ function ConfigDialog({
                 />
                 <Field name="jdbc_secret_scope" label="JDBC secret scope" value={row?.jdbc_secret_scope} />
                 <Field name="jdbc_secret_key" label="JDBC secret key" value={row?.jdbc_secret_key} />
-                <Field name="uc_secret_name" label="UC secret name" value={row?.uc_secret_name} hint="Format: catalog.schema.secret_name" />
+                <Field
+                  name="uc_secret_name"
+                  label="UC secret name"
+                  value={row?.uc_secret_name}
+                  hint="Format: catalog.schema.secret_name"
+                />
                 <Field name="fetch_size" label="JDBC fetch size" value={String(row?.fetch_size ?? 10000)} />
                 <Field name="num_partitions" label="JDBC partitions" value={String(row?.num_partitions ?? 8)} />
               </div>

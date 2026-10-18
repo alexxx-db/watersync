@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useReportedFailure } from '../lib/logging';
 import { fqn, displayTime } from '../utils';
-import { useControl } from './Layout';
+import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, Metric, Hint } from './shared';
 
 export function OverviewPage() {

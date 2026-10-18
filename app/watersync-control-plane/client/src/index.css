@@ -47,6 +47,28 @@ body {
   color: var(--muted-foreground);
   font-weight: 550;
 }
+.brand-version {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.release-notice {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 0.3rem;
+  color: var(--warning-foreground);
+}
+.release-notice svg {
+  fill: var(--warning);
+}
+.release-notice:hover svg {
+  fill: color-mix(in oklch, var(--warning) 80%, var(--warning-foreground));
+}
+.release-notice:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 .brand-subtitle {
   margin-top: 0.15rem;
   color: var(--muted-foreground);
@@ -305,6 +327,17 @@ body {
   color: var(--muted-foreground);
   font-size: 0.75rem;
   font-weight: 700;
+}
+/* Table rows: fixed-width marks so the run history lines up across jobs. */
+.run-timeline-compact {
+  grid-template-columns: repeat(10, 1.5rem);
+  gap: 0.2rem;
+  min-height: 0;
+}
+.run-timeline-compact .run-mark {
+  min-height: 1.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
 }
 .run-mark-success {
   border-color: color-mix(in oklch, var(--success) 55%, var(--border));

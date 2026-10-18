@@ -83,6 +83,21 @@ export const responseRows = (response: Awaited<ReturnType<typeof execute>>) => {
   );
 };
 
+/** Like responseRows, but also fetches the result chunks that did not fit in the first response. */
+export const allResponseRows = async (response: Awaited<ReturnType<typeof execute>>) => {
+  const rows = responseRows(response);
+  let chunkIndex = response.result?.next_chunk_index;
+  while (chunkIndex != null && response.statement_id) {
+    const chunk = await workspace.statementExecution.getStatementResultChunkN({
+      statement_id: response.statement_id,
+      chunk_index: chunkIndex,
+    });
+    rows.push(...responseRows({ ...response, result: chunk }));
+    chunkIndex = chunk.next_chunk_index;
+  }
+  return rows;
+};
+
 // --- Database migrations ---
 const migrationContext: MigrationContext = {
   execute,
