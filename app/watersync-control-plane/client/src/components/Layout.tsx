@@ -13,7 +13,7 @@ import {
   Input,
   Label,
 } from '@databricks/appkit-ui/react';
-import { Activity, Database, Droplets, Settings2, Workflow } from 'lucide-react';
+import { Activity, Database, Droplets, ScanSearch, Settings2, Workflow } from 'lucide-react';
 import { api } from '../lib/api';
 import { reportWarning } from '../lib/logging';
 import type { Context, Location } from '../types';
@@ -57,6 +57,7 @@ export function Layout() {
     ['/config', 'Configuration', Settings2],
     ['/watermarks', 'Watermarks', Droplets],
     ['/jobs', 'Jobs', Workflow],
+    ['/row-checks', 'Row checks', ScanSearch],
   ] as const;
   return (
     <div className="app-shell min-h-screen bg-background text-foreground">

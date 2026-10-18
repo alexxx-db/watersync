@@ -80,6 +80,45 @@ declare module '@databricks/appkit-ui/react' {
         enabled_incremental_source_count: number;
       }>;
     };
+    row_check_results: {
+      name: 'row_check_results';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        search: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        ingestion_group: string;
+        source_table_name: string;
+        target_table_fqn: string;
+        key_columns: string | null;
+        basic_checked_at: string | null;
+        basic_source_count: number | null;
+        basic_target_count: number | null;
+        basic_count_diff: number | null;
+        basic_status: string | null;
+        basic_error: string | null;
+        basic_checked_range: string | null;
+        detailed_checked_at: string | null;
+        detailed_source_count: number | null;
+        detailed_target_count: number | null;
+        detailed_missing_in_target: number | null;
+        detailed_extra_in_target: number | null;
+        detailed_mismatched_rows: number | null;
+        detailed_compared_columns: string | null;
+        detailed_sample_keys: string | null;
+        detailed_status: string | null;
+        detailed_error: string | null;
+        detailed_duration_ms: number | null;
+        detailed_chunk_column: string | null;
+        detailed_chunk_count: number | null;
+        detailed_mismatched_chunks: number | null;
+        detailed_drilled_chunks: number | null;
+        detailed_chunk_details: string | null;
+        detailed_checked_range: string | null;
+      }>;
+    };
   }
 }
 

@@ -8,6 +8,7 @@
 - [Running Ingestion](Running-Ingestion.md)
 - [CDC Pipeline and Full Refresh](CDC-Pipeline-and-Full-Refresh.md)
 - [Control Plane App](Control-Plane-App.md)
+- [Row Checks](Row-Checks.md)
 - [Import and Export](Import-and-Export.md)
 - [Job Provisioning](Job-Provisioning.md)
 - [Lakebase Test Setup](Lakebase-Test-Setup.md)

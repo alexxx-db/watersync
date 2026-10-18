@@ -19,6 +19,7 @@ WaterSync is a Python package and Databricks App for metadata-driven JDBC ingest
 | [Running Ingestion](Running-Ingestion.md) | Running from a notebook or the CLI, fan-out planning, timestamp and EPIC CSA workers |
 | [CDC Pipeline and Full Refresh](CDC-Pipeline-and-Full-Refresh.md) | SCD Type 2 flows per source type; whole-job and single-table full refresh |
 | [Control Plane App](Control-Plane-App.md) | App pages, deployment, and every setting of the jobs it creates (compute, schedule, run as) |
+| [Row Checks](Row-Checks.md) | Tiered comparison of source and target tables: row counts, chunk aggregates, then the rows of differing chunks, and the job that runs it |
 | [Import and Export](Import-and-Export.md) | Moving a configuration between environments from the app or a deployment pipeline; file format |
 | [Job Provisioning](Job-Provisioning.md) | Creating jobs from Python or the CLI instead of the app |
 | [Lakebase Test Setup](Lakebase-Test-Setup.md) | A seeded Lakebase Postgres source for testing both workers |

@@ -231,6 +231,23 @@ export const jobPayloadSchema = locationSchema.extend({
   pipelineCompute: pipelineComputeSchema.prefault({ mode: 'SERVERLESS' }),
   runAs: runAsSchema.prefault({}),
 });
+export const rowCheckJobPayloadSchema = locationSchema.extend({
+  gitUrl: jobPayloadSchema.shape.gitUrl,
+  gitBranch: jobPayloadSchema.shape.gitBranch,
+  maxParallelTables: z.number().int().min(1).max(32),
+  schedule: scheduleSchema,
+});
+export const rowCheckRunPayloadSchema = locationSchema.extend({
+  checkMode: z.enum(['basic', 'detailed']),
+  // Empty means every group or table; a detailed check usually names one table.
+  ingestionGroup: z.string().trim().optional().default(''),
+  sourceTableName: z.string().trim().optional().default(''),
+  // Optional range of rows to check: rangeFrom <= column < rangeTo. The job validates the values against the
+  // column type; an empty column means each table's chunk column.
+  rangeColumn: z.string().trim().max(128).optional().default(''),
+  rangeFrom: z.string().trim().max(64).optional().default(''),
+  rangeTo: z.string().trim().max(64).optional().default(''),
+});
 export const jobSchedulePayloadSchema = scheduleSchema.extend({ jobId: z.number().int().positive() });
 
 // Entries are kept loose here and validated one by one against configSchema / jobPayloadSchema, with the
@@ -259,5 +276,7 @@ export type PipelineCompute = z.infer<typeof pipelineComputeSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
 export type ConfigPayload = z.infer<typeof configSchema>;
 export type JobPayload = z.infer<typeof jobPayloadSchema>;
+export type RowCheckJobPayload = z.infer<typeof rowCheckJobPayloadSchema>;
+export type RowCheckRunPayload = z.infer<typeof rowCheckRunPayloadSchema>;
 /** Job settings as stored and exported: the job payload without the location it was deployed to. */
 export type JobSettings = Omit<JobPayload, 'catalog' | 'schema'>;

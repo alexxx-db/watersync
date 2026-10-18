@@ -170,6 +170,8 @@ npx vitest run
 | `POST /api/jobs/:jobId/run`, `PATCH /api/jobs/:jobId/schedule`                          | Run a job (optionally as a full refresh), change its schedule |
 | `GET /api/export`, `POST /api/import`                                                   | Export or import a location's configuration                   |
 | `GET /api/latest-release`                                                               | Latest published GitHub release, for the new release notice   |
+| `GET /api/row-checks/job`, `POST /api/row-checks/job`                                   | Read (with its last 10 runs) or save the location's row check job |
+| `POST /api/row-checks/run`                                                              | Start a basic or detailed row check, optionally for one table |
 
 ## Migrations
 
@@ -182,6 +184,7 @@ Applied ids are tracked in `<catalog>.<schema>._watersync_migrations`. To add on
 | `001_create_tables`           | `jdbc_ingestion_config` and `jdbc_ingestion_watermark` |
 | `002_add_uc_secret_name`      | `uc_secret_name` column                                |
 | `003_add_connection_database` | `connection_database` column                           |
+| `004_create_row_checks`       | `watersync_row_checks` (see [Row Checks](Row-Checks.md)) |
 
 ## Logging and Diagnostics
 

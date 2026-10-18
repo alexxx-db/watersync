@@ -104,3 +104,29 @@ export type ImportResult = {
   removedCount?: number;
   jobs?: ImportJobResult[];
 };
+export type RowCheckMode = 'basic' | 'detailed';
+export type RowCheckRun = {
+  runId?: number;
+  runUrl?: string;
+  startTime?: number;
+  endTime?: number;
+  lifeCycleState?: string;
+  resultState?: string;
+  stateMessage?: string;
+  checkMode: RowCheckMode;
+  ingestionGroup: string;
+  sourceTableName: string;
+  rangeColumn: string;
+  rangeFrom: string;
+  rangeTo: string;
+};
+/** The location's row check job, read back from the Databricks API (GET /api/row-checks/job). */
+export type RowCheckJob = {
+  jobId: number;
+  workspaceUrl: string;
+  gitUrl: string;
+  gitBranch: string;
+  maxParallelTables: number;
+  schedule: JobSchedule | null;
+  runs: RowCheckRun[];
+};
