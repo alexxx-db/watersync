@@ -90,6 +90,7 @@ declare module '@databricks/appkit-ui/react' {
         search: StringParam;
         tables: StringParam;
         top: IntParam;
+        level: StringParam;
         refresh_token: IntParam;
       };
       result: Array<{
@@ -97,7 +98,7 @@ declare module '@databricks/appkit-ui/react' {
         ingestion_group: string;
         source_table_name: string;
         is_other: boolean | string;
-        table_count: number | string;
+        entity_count: number | string;
         source_count: number | string | null;
         target_count: number | string | null;
         rows_ingested: number | string | null;
@@ -172,10 +173,34 @@ declare module '@databricks/appkit-ui/react' {
       };
       result: Array<{
         table_count: number | string;
+        group_count: number | string;
         match_count: number | string;
         mismatch_count: number | string;
         error_count: number | string;
         last_checked_at: string | null;
+      }>;
+    };
+    row_check_groups: {
+      name: 'row_check_groups';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        status: StringParam;
+        page_size: IntParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        ingestion_group: string;
+        table_count: number | string;
+        match_count: number | string;
+        mismatch_count: number | string;
+        error_count: number | string;
+        unchecked_count: number | string;
+        source_count: number | string | null;
+        target_count: number | string | null;
+        rows_out_of_sync: number | string | null;
+        last_checked_at: string | null;
+        total_count: number | string;
       }>;
     };
   }

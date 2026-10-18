@@ -17,6 +17,7 @@ latest AS (
 )
 SELECT
   count(*) AS table_count,
+  count(DISTINCT c.ingestion_group) AS group_count,
   count_if(l.status = 'MATCH') AS match_count,
   count_if(l.status = 'MISMATCH') AS mismatch_count,
   count_if(l.status = 'ERROR') AS error_count,

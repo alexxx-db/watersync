@@ -26,11 +26,13 @@ export function RowCheckDailyChart({
   filtered: boolean;
 }) {
   const labels = chart.series.map((item) => item.label);
+  const groups = chart.level === 'group';
+  const noun = (count: number) => (groups ? (count === 1 ? 'group' : 'groups') : count === 1 ? 'table' : 'tables');
   const scope = picked
     ? `${picked} picked ${picked === 1 ? 'table' : 'tables'}`
-    : chart.tableCount > TOP_TABLES
-      ? `Top ${TOP_TABLES} of ${chart.tableCount.toLocaleString()} tables by rows ingested · the other ${(chart.tableCount - TOP_TABLES).toLocaleString()} in Other tables`
-      : `${chart.tableCount.toLocaleString()} ${chart.tableCount === 1 ? 'table' : 'tables'}`;
+    : chart.entityCount > TOP_TABLES
+      ? `Top ${TOP_TABLES} of ${chart.entityCount.toLocaleString()} ${noun(chart.entityCount)} by rows ingested · the other ${(chart.entityCount - TOP_TABLES).toLocaleString()} in Other ${noun(2)}`
+      : `${chart.entityCount.toLocaleString()} ${noun(chart.entityCount)}`;
   return (
     <Card className="mb-6">
       <CardHeader className="pb-2">
@@ -42,6 +44,7 @@ export function RowCheckDailyChart({
           Last {DAILY_DAYS} days (UTC), from each day&apos;s last whole-table basic check. Rows ingested is the
           target&apos;s growth since the previous checked day, net of deletes; on the first checked day, since that
           day&apos;s first check.
+          {groups && ' Each group adds up its tables; pick a group or tables in the filters to see them one by one.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -75,7 +78,7 @@ export function RowCheckDailyChart({
                   height={CHART_HEIGHT}
                   showLegend={labels.length > 1}
                   options={chart.ingestedOptions}
-                  ariaLabel="Rows ingested per day, by source table"
+                  ariaLabel={`Rows ingested per day, by ${groups ? 'ingestion group' : 'source table'}`}
                 />
               ) : (
                 <p
@@ -88,7 +91,8 @@ export function RowCheckDailyChart({
             </section>
             <section aria-label="Target minus source rows per day">
               <h3 className="mb-1 text-sm font-medium">
-                Target − source rows
+                {/* A group adds up absolute differences, so tables off in opposite directions cannot cancel out. */}
+                {groups ? 'Rows out of sync' : 'Target − source rows'}
                 <span
                   className={
                     chart.daysWithDifference ? 'font-normal text-destructive' : 'font-normal text-muted-foreground'
@@ -108,7 +112,11 @@ export function RowCheckDailyChart({
                 height={CHART_HEIGHT}
                 showLegend={labels.length > 1}
                 options={chart.differenceOptions}
-                ariaLabel="Target minus source row count per day, by source table"
+                ariaLabel={
+                  groups
+                    ? 'Rows out of sync per day, by ingestion group'
+                    : 'Target minus source row count per day, by source table'
+                }
               />
             </section>
           </div>

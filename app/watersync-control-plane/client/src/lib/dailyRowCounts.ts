@@ -14,17 +14,26 @@ export const DAILY_DAYS = 30;
 // With no table picked, the top tables by rows ingested are charted by name and the rest add up into one series.
 export const TOP_TABLES = 7;
 
+/** What one chart series is: a group with its tables added up, or one table. */
+export type DailyLevel = 'group' | 'table';
+
 const toNumber = (value: number | string | null) => (value == null || value === '' ? null : Number(value));
 const isTrue = (value: boolean | string) => value === true || value === 'true';
 
 export type Series = { key: string; label: string; color: string };
 
 /**
- * One series per table the query returned, plus "Other tables" last. Picked tables keep the palette slot they
- * were given when picked; the top tables take slots in name order. Either way a table keeps its color in both
- * charts, and removing one table does not repaint the others.
+ * One series per group or table the query returned, plus "Other groups" / "Other tables" last. Picked tables keep
+ * the palette slot they were given when picked; otherwise series take slots in name order. Either way a series
+ * keeps its color in both charts, and removing one picked table does not repaint the others.
  */
-function buildSeries(rows: DailyRow[], picked: PickedTable[], colors: string[], otherColor: string): Series[] {
+function buildSeries(
+  rows: DailyRow[],
+  level: DailyLevel,
+  picked: PickedTable[],
+  colors: string[],
+  otherColor: string
+): Series[] {
   const named = new Map<string, { group: string; table: string }>();
   let hasOther = false;
   for (const row of rows) {
@@ -38,15 +47,20 @@ function buildSeries(rows: DailyRow[], picked: PickedTable[], colors: string[], 
   const nameCounts = new Map<string, number>();
   for (const { table } of named.values()) nameCounts.set(table, (nameCounts.get(table) ?? 0) + 1);
   const slots = new Map(picked.map((item) => [tableKey(item.group, item.table), item.slot]));
+  // A group series has no table name; a table shows its group only when two groups load a table of that name.
+  const label = ({ group, table }: { group: string; table: string }) =>
+    level === 'group' ? group : (nameCounts.get(table) ?? 0) > 1 ? `${group} · ${table}` : table;
   const series = [...named.entries()]
-    .sort((a, b) => a[1].table.localeCompare(b[1].table) || a[1].group.localeCompare(b[1].group))
-    .map(([key, { group, table }], index) => ({
+    .map(([key, entry]) => ({ key, label: label(entry) }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map(({ key, label: name }, index) => ({
       key,
-      // The group is only shown when two groups load a table with the same name.
-      label: (nameCounts.get(table) ?? 0) > 1 ? `${group} · ${table}` : table,
+      label: name,
       color: colors[(slots.get(key) ?? index) % colors.length],
     }));
-  if (hasOther) series.push({ key: 'other', label: 'Other tables', color: otherColor });
+  if (hasOther) {
+    series.push({ key: 'other', label: level === 'group' ? 'Other groups' : 'Other tables', color: otherColor });
+  }
   return series;
 }
 
@@ -109,7 +123,7 @@ function dailyOptions(
 export type DailyRowCounts = ReturnType<typeof useDailyRowCounts>;
 
 /** The daily row count query for the page filters, shaped into chart series and per-day rows. */
-export function useDailyRowCounts(location: Location, revision: number, filters: RowCheckFilters) {
+export function useDailyRowCounts(location: Location, revision: number, filters: RowCheckFilters, level: DailyLevel) {
   const params = useMemo(
     () => ({
       config_table: sql.string(fqn(location, 'jdbc_ingestion_config')),
@@ -119,9 +133,10 @@ export function useDailyRowCounts(location: Location, revision: number, filters:
       search: sql.string(filters.search),
       tables: sql.string(pickedTablesParam(filters.picked)),
       top: sql.int(TOP_TABLES),
+      level: sql.string(level),
       refresh_token: sql.int(revision),
     }),
-    [location, filters, revision]
+    [location, filters, level, revision]
   );
   const { data, loading, error } = useAnalyticsQuery('row_check_daily', params);
   useReportedFailure('query.row_check_daily', error, {
@@ -135,10 +150,11 @@ export function useDailyRowCounts(location: Location, revision: number, filters:
   return useMemo(() => {
     const rows = data ?? [];
     // "Other tables" is not an entity, so it gets the muted axis color instead of a palette hue.
-    const series = buildSeries(rows, filters.picked, colors, ui.axisLabel);
+    const series = buildSeries(rows, level, filters.picked, colors, ui.axisLabel);
     const ingested = pivot(rows, series, 'rows_ingested');
     const difference = pivot(rows, series, 'count_diff');
     return {
+      level,
       loading,
       error,
       colors,
@@ -148,10 +164,10 @@ export function useDailyRowCounts(location: Location, revision: number, filters:
       ingestedOptions: dailyOptions(ingested, series, 'bar', ui),
       differenceOptions: dailyOptions(difference, series, 'line', ui),
       days: new Set(rows.map((row) => row.day)).size,
-      tableCount: Math.max(0, ...rows.map((row) => Number(row.table_count) || 0)),
+      entityCount: Math.max(0, ...rows.map((row) => Number(row.entity_count) || 0)),
       daysWithDifference: new Set(rows.filter((row) => Number(row.count_diff)).map((row) => row.day)).size,
       totalIngested: rows.reduce((sum, row) => sum + (toNumber(row.rows_ingested) ?? 0), 0),
       hasIngested: rows.some((row) => toNumber(row.rows_ingested) != null),
     };
-  }, [data, loading, error, filters.picked, colors, ui]);
+  }, [data, level, loading, error, filters.picked, colors, ui]);
 }
