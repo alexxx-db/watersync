@@ -30,7 +30,7 @@ repository or turn it off.
 | **Configuration** | Add, edit and delete config rows. Discover source tables over a UC connection or a JDBC URL (SQL Server, Oracle, PostgreSQL, MySQL), optionally reading another database than the connection's (Oracle: service name), and infer key and watermark columns from primary-key constraints |
 | **Watermarks** | Inspect per-table state and schedule a full refresh for a single table (see [Full Refresh](CDC-Pipeline-and-Full-Refresh.md#full-refresh)) |
 | **Jobs** | Create or update a group's job and CDC pipeline (see [below](#jobs-created-by-the-app)), run it incrementally or as a full refresh, and edit its schedule. Two views, remembered per browser: **Blocks** (a card per job, the default) and **List** (one table row per job, easier to scan when there are many). Both show each job's status, schedule and last 10 runs |
-| **Row checks** | Compare each enabled source table with its target: the latest basic check (row counts, run daily by the location's row check job) and detailed check (per-chunk sums and hashes, then the rows of differing chunks, started per table) of every table, with sample keys of the differences. See [Row Checks](Row-Checks.md) |
+| **Row checks** | Compare each enabled source table with its target: a summary of the latest basic check (row counts, run daily by the location's row check job), daily rows ingested and differences, and per-group then per-table results, all filtered by group, picked tables or table name. Detailed checks (per-chunk sums and hashes, then the rows of differing chunks) are started per table. See [Row Checks](Row-Checks.md#the-row-checks-page) |
 
 ## Deploying
 

@@ -67,6 +67,28 @@ A row whose range column changed in the source but not yet in the target (for ex
 
 A [full refresh](CDC-Pipeline-and-Full-Refresh.md#full-refresh) of the table resynchronizes it.
 
+## The Row checks page
+
+The page of the [Control Plane App](Control-Plane-App.md) shows, from top to bottom:
+
+- **Filter bar.** A group, up to 8 picked tables (one per chart color) and a table-name search, applied to every section below. The filtering runs on the SQL warehouse, so the page works the same with thousands of tables.
+- **Summary.** One line with the latest basic check of the filtered tables: how many match, differ or failed, the last check and the schedule.
+- **Daily row counts.** For the last 30 days (UTC), from each day's last whole-table basic check: the rows ingested per day (the target's growth since the previous checked day, net of deletes; on the first checked day, since that day's first check) and the target − source difference. Unless tables are picked, the 7 series with the most rows ingested are shown by name and the others add up into "Other".
+- **Recent check runs** of the row check job.
+- **Groups or tables**, problems first, 100 at a time with **Show more**, narrowed further by status (needs attention, match, not checked).
+
+What the chart and the list show follows the selection:
+
+| Selection | Chart | List |
+| --- | --- | --- |
+| Nothing | One series per group, its tables added up | One row per group: table count, results by status, rows, rows out of sync, last check. Click a group to open it |
+| A group or a name search | One series per table | Its tables, with an **All groups** link back |
+| Picked tables | Those tables | Those tables |
+
+A series or row made of several tables (a group, or "Other") adds up *absolute* differences, so tables off in opposite directions cannot cancel out; the chart calls it **Rows out of sync** at group level.
+
+**Detailed check** on a table's row starts a detailed check of the whole table or of a [range](#checking-a-range); the details button shows the latest results, the differing chunks and sample keys.
+
 ## Results table
 
 Each check appends one row per table to `<catalog>.<schema>.watersync_row_checks`. The table is created by the app's migrations, by `UnityCatalogSetup.create_all()`, or by the first check.

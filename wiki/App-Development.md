@@ -173,6 +173,10 @@ npx vitest run
 | `GET /api/row-checks/job`, `POST /api/row-checks/job`                                   | Read (with its last 10 runs) or save the location's row check job |
 | `POST /api/row-checks/run`                                                              | Start a basic or detailed row check, optionally for one table |
 
+## Query caching
+
+The analytics plugin caches each query result for an hour, keyed by its parameters. Every query in `config/queries` takes a `refresh_token`, which `Layout.tsx` sets to the current time in seconds on each page load and refresh, so both always reach the warehouse. Give new queries the same parameter.
+
 ## Migrations
 
 Selecting a location runs the pending migrations in `server/migrations`, once per location and server process.
