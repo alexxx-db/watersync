@@ -342,4 +342,4 @@ display(
 # COMMAND ----------
 
 # MAGIC %sh
-# MAGIC cp ../dist/watersync-0.1.1-py3-none-any.whl /Volumes/<catalog>/<schema>/<volume>/watersync-0.1.1-py3-none-any.whl
+# MAGIC cp ../dist/watersync-0.2.0-py3-none-any.whl /Volumes/<catalog>/<schema>/<volume>/watersync-0.2.0-py3-none-any.whl
