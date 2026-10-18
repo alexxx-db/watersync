@@ -47,11 +47,13 @@ import {
 } from 'lucide-react';
 import type { QueryRegistry } from '@databricks/appkit-ui/react';
 import { api } from '../lib/api';
-import { reportError, reportWarning, useReportedFailure } from '../lib/logging';
+import { jsonColumn } from '../lib/jsonColumn';
+import { reportError, useReportedFailure } from '../lib/logging';
 import type { Location, RowCheckJob, RowCheckMode, RowCheckRun } from '../types';
 import { displayTime, formString, fqn, relativeTime } from '../utils';
 import { useControl } from '../lib/control';
-import { PageTitle, ErrorState, Metric, ScheduleFields, Toggle } from './shared';
+import { PageTitle, ErrorState, ScheduleFields, Toggle } from './shared';
+import { RowCheckDailyChart } from './RowCheckDailyChart';
 
 type RowCheckRow = QueryRegistry['row_check_results']['result'][number];
 
@@ -274,40 +276,9 @@ export function RowChecksPage() {
           </AlertDescription>
         </Alert>
       )}
+      <SummaryStrip summary={summary} job={job} loading={loading} />
+      <RowCheckDailyChart location={location} revision={revision} />
       {job && <RunStrip job={job} activeRuns={activeRuns} />}
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Metric
-          icon={CheckCircle2}
-          tone="success"
-          title="Counts match"
-          value={summary.match}
-          note={`of ${summary.tables} enabled tables · last basic check`}
-        />
-        <Metric
-          icon={TriangleAlert}
-          title="Counts differ"
-          value={summary.mismatch}
-          note="source and target row counts are not equal"
-          destructive={summary.mismatch > 0}
-        />
-        <Metric
-          icon={XCircle}
-          title="Check errors"
-          value={summary.error}
-          note="the table could not be checked"
-          destructive={summary.error > 0}
-        />
-        <Metric
-          icon={RefreshCw}
-          title="Latest basic check"
-          value={displayTime(summary.lastCheck)}
-          note={
-            job?.schedule
-              ? `schedule: ${job.schedule.quartz_cron_expression} (${job.schedule.timezone_id})`
-              : 'not scheduled'
-          }
-        />
-      </div>
       <div className="mb-4 flex gap-2">
         <Input
           aria-label="Filter row checks"
@@ -560,6 +531,48 @@ function DetailedCheckDialog({
   );
 }
 
+type Summary = { tables: number; match: number; mismatch: number; error: number; lastCheck: string | null };
+
+/** The latest basic check across the listed tables, in one line. */
+function SummaryStrip({ summary, job, loading }: { summary: Summary; job: RowCheckJob | null; loading: boolean }) {
+  if (loading) return <Skeleton className="mb-6 h-12" />;
+  const schedule = job?.schedule;
+  const items = [
+    { Icon: CheckCircle2, value: summary.match, label: 'match', tone: 'text-success' },
+    { Icon: XCircle, value: summary.mismatch, label: 'differ', tone: summary.mismatch ? 'text-destructive' : '' },
+    {
+      Icon: TriangleAlert,
+      value: summary.error,
+      label: 'errors',
+      tone: summary.error ? 'text-warning-foreground' : '',
+    },
+  ];
+  return (
+    // A plain bordered row: Card lays its children out as a column.
+    <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
+      <span className="font-medium">
+        Basic check <span className="font-normal text-muted-foreground">· {summary.tables} enabled tables</span>
+      </span>
+      {items.map(({ Icon, value, label, tone }) => (
+        <span key={label} className={`flex items-center gap-1.5 ${value ? tone : 'text-muted-foreground'}`}>
+          <Icon className="h-4 w-4" aria-hidden />
+          <span className="font-semibold tabular-nums">{value}</span> {label}
+        </span>
+      ))}
+      <span className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
+        <span title={summary.lastCheck ? displayTime(summary.lastCheck) : undefined}>
+          Last check {relativeTime(summary.lastCheck)}
+        </span>
+        <span>
+          {schedule
+            ? `${schedule.pause_status === 'PAUSED' ? 'Paused · ' : ''}Schedule ${schedule.quartz_cron_expression} (${schedule.timezone_id})`
+            : 'Not scheduled'}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function RunStrip({ job, activeRuns }: { job: RowCheckJob; activeRuns: RowCheckRun[] }) {
   const runs = job.runs.slice(0, 5);
   return (
@@ -768,24 +781,18 @@ function ChunkRowResult({ chunk }: { chunk: ChunkDetails['chunks'][number] }) {
 }
 
 function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onClose: () => void }) {
-  const chunkDetails = useMemo(() => {
-    if (!row?.detailed_chunk_details) return null;
-    try {
-      return JSON.parse(row.detailed_chunk_details) as ChunkDetails;
-    } catch (x) {
-      reportWarning('row_checks.chunk_details_unreadable', 'Chunk details are not valid JSON', { detail: String(x) });
-      return null;
-    }
-  }, [row]);
-  const samples = useMemo(() => {
-    if (!row?.detailed_sample_keys) return null;
-    try {
-      return JSON.parse(row.detailed_sample_keys) as Record<string, Array<Record<string, string>>>;
-    } catch (x) {
-      reportWarning('row_checks.sample_keys_unreadable', 'Sample keys are not valid JSON', { detail: String(x) });
-      return null;
-    }
-  }, [row]);
+  const chunkDetails = useMemo(
+    () => jsonColumn<ChunkDetails>(row?.detailed_chunk_details, 'row_checks.chunk_details_unreadable'),
+    [row]
+  );
+  const samples = useMemo(
+    () =>
+      jsonColumn<Record<string, Array<Record<string, string>>>>(
+        row?.detailed_sample_keys,
+        'row_checks.sample_keys_unreadable'
+      ),
+    [row]
+  );
   const sampleLabels: Record<string, string> = {
     missing_in_target: 'Missing in target',
     extra_in_target: 'Extra in target',
@@ -793,10 +800,10 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
   };
   return (
     <Dialog open={!!row} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Row check details</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-all">
             {row?.ingestion_group} / <span className="font-mono">{row?.source_table_name}</span> →{' '}
             <span className="font-mono">{row?.target_table_fqn}</span>
           </DialogDescription>
@@ -804,7 +811,7 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
         {row && (
           <div className="space-y-5 text-sm">
             <section className="space-y-1">
-              <h3 className="font-semibold">Basic check · {displayTime(row.basic_checked_at)}</h3>
+              <h3 className="text-sm font-semibold">Basic check · {displayTime(row.basic_checked_at)}</h3>
               <CheckedRange range={row.basic_checked_range} />
               {row.basic_error ? (
                 <ErrorState message={row.basic_error} />
@@ -816,7 +823,7 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
               )}
             </section>
             <section className="space-y-2">
-              <h3 className="font-semibold">Detailed check · {displayTime(row.detailed_checked_at)}</h3>
+              <h3 className="text-sm font-semibold">Detailed check · {displayTime(row.detailed_checked_at)}</h3>
               <CheckedRange range={row.detailed_checked_range} />
               {!row.detailed_status ? (
                 <p className="text-muted-foreground">No detailed check has run for this table.</p>
@@ -870,8 +877,10 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
                                 <TableCell className="font-mono text-xs">{chunk.label}</TableCell>
                                 <TableCell className="text-right tabular-nums">{count(chunk.source_rows)}</TableCell>
                                 <TableCell className="text-right tabular-nums">{count(chunk.target_rows)}</TableCell>
-                                <TableCell className="font-mono text-xs">{chunk.differs.join(', ')}</TableCell>
-                                <TableCell className="text-xs">
+                                <TableCell className="whitespace-normal break-words font-mono text-xs">
+                                  {chunk.differs.join(', ')}
+                                </TableCell>
+                                <TableCell className="whitespace-normal text-xs">
                                   <ChunkRowResult chunk={chunk} />
                                 </TableCell>
                               </TableRow>
@@ -884,7 +893,7 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
                   {row.detailed_compared_columns && Number(row.detailed_drilled_chunks) > 0 && (
                     <p className="text-xs text-muted-foreground">
                       Rows of the differing chunks compared on:{' '}
-                      <span className="font-mono">{row.detailed_compared_columns}</span>
+                      <span className="font-mono">{row.detailed_compared_columns.split(',').join(', ')}</span>
                     </p>
                   )}
                   {samples &&

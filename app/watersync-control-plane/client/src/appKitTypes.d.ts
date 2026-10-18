@@ -80,6 +80,24 @@ declare module '@databricks/appkit-ui/react' {
         enabled_incremental_source_count: number;
       }>;
     };
+    row_check_daily: {
+      name: 'row_check_daily';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        days: IntParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        day: string;
+        ingestion_group: string;
+        source_table_name: string;
+        source_count: number | string | null;
+        target_count: number | string | null;
+        rows_ingested: number | string | null;
+        count_diff: number | string | null;
+      }>;
+    };
     row_check_results: {
       name: 'row_check_results';
       parameters: {
@@ -107,7 +125,8 @@ declare module '@databricks/appkit-ui/react' {
         detailed_extra_in_target: number | null;
         detailed_mismatched_rows: number | null;
         detailed_compared_columns: string | null;
-        detailed_sample_keys: string | null;
+        // JSON columns: the analytics plugin returns them parsed (see lib/jsonColumn.ts).
+        detailed_sample_keys: unknown;
         detailed_status: string | null;
         detailed_error: string | null;
         detailed_duration_ms: number | null;
@@ -115,7 +134,7 @@ declare module '@databricks/appkit-ui/react' {
         detailed_chunk_count: number | null;
         detailed_mismatched_chunks: number | null;
         detailed_drilled_chunks: number | null;
-        detailed_chunk_details: string | null;
+        detailed_chunk_details: unknown;
         detailed_checked_range: string | null;
       }>;
     };
