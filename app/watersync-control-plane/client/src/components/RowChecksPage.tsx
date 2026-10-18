@@ -24,6 +24,11 @@ import {
   EmptyTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Table,
   TableBody,
@@ -39,7 +44,6 @@ import {
   Loader2,
   PanelRightOpen,
   Play,
-  RefreshCw,
   ScanSearch,
   Settings2,
   TriangleAlert,
@@ -54,6 +58,10 @@ import { displayTime, formString, fqn, relativeTime } from '../utils';
 import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ScheduleFields, Toggle } from './shared';
 import { RowCheckDailyChart } from './RowCheckDailyChart';
+import { RowCheckFilterBar } from './RowCheckFilters';
+import { useDailyRowCounts } from '../lib/dailyRowCounts';
+import { MAX_PICKED, pickedTablesParam, tableKey, useDebounced } from '../lib/rowCheckFilters';
+import type { PickedTable } from '../lib/rowCheckFilters';
 
 type RowCheckRow = QueryRegistry['row_check_results']['result'][number];
 
@@ -67,6 +75,9 @@ const count = (value: number | string | null | undefined) => (value == null ? '�
 const signed = (value: number | string | null | undefined) =>
   value == null ? '—' : `${Number(value) > 0 ? '+' : ''}${Number(value).toLocaleString()}`;
 const pollIntervalMs = 15_000;
+// Tables listed at a time; Show more adds as many again.
+const PAGE_SIZE = 100;
+type StatusFilter = '' | 'attention' | 'match' | 'unchecked';
 
 const statusStyles = {
   MATCH: { className: 'check-status-match', label: 'Match', Icon: CheckCircle2 },
@@ -141,17 +152,16 @@ function CheckError({ message }: { message: string | null }) {
   );
 }
 
-// Problems first: errors, then mismatches, then matches, then tables never checked.
-const severity = (row: RowCheckRow) => {
-  const statuses = [row.basic_status, row.detailed_status];
-  if (statuses.includes('ERROR')) return 0;
-  if (statuses.includes('MISMATCH')) return 1;
-  return statuses.some(Boolean) ? 2 : 3;
-};
-
 export function RowChecksPage() {
   const { location, revision, refresh } = useControl();
-  const [search, setSearch] = useState('');
+  const [group, setGroup] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [picked, setPicked] = useState<PickedTable[]>([]);
+  const [status, setStatus] = useState<StatusFilter>('');
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const search = useDebounced(searchInput.trim());
+  const filters = useMemo(() => ({ group, search, picked }), [group, search, picked]);
+  const filtered = Boolean(group || search || picked.length);
   const [job, setJob] = useState<RowCheckJob | null>(null);
   const [jobLoading, setJobLoading] = useState(true);
   const [jobError, setJobError] = useState<string | null>(null);
@@ -161,17 +171,26 @@ export function RowChecksPage() {
   const [starting, setStarting] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const params = useMemo(
+  const filterParams = useMemo(
     () => ({
       config_table: sql.string(fqn(location, 'jdbc_ingestion_config')),
       row_check_table: sql.string(fqn(location, 'watersync_row_checks')),
+      ingestion_group: sql.string(group),
       search: sql.string(search),
+      tables: sql.string(pickedTablesParam(picked)),
       refresh_token: sql.int(revision),
     }),
-    [location, search, revision]
+    [location, group, search, picked, revision]
+  );
+  const params = useMemo(
+    () => ({ ...filterParams, status: sql.string(status), page_size: sql.int(pageSize) }),
+    [filterParams, status, pageSize]
   );
   const { data, loading, error } = useAnalyticsQuery('row_check_results', params);
-  useReportedFailure('query.row_check_results', error, { ...location, search });
+  useReportedFailure('query.row_check_results', error, { ...location, group, search, status });
+  const { data: summaryRows, loading: summaryLoading } = useAnalyticsQuery('row_check_summary', filterParams);
+  const chart = useDailyRowCounts(location, revision, filters);
+  const totalCount = Number(data?.[0]?.total_count ?? 0);
 
   const loadJob = useCallback(async () => {
     try {
@@ -227,19 +246,53 @@ export function RowChecksPage() {
   };
 
   const summary = useMemo(() => {
-    const rows = data ?? [];
+    const row = summaryRows?.[0];
     return {
-      tables: rows.length,
-      match: rows.filter((row) => row.basic_status === 'MATCH').length,
-      mismatch: rows.filter((row) => row.basic_status === 'MISMATCH').length,
-      error: rows.filter((row) => row.basic_status === 'ERROR').length,
-      lastCheck: rows.reduce<string | null>(
-        (latest, row) =>
-          row.basic_checked_at && (!latest || row.basic_checked_at > latest) ? row.basic_checked_at : latest,
-        null
-      ),
+      tables: Number(row?.table_count ?? 0),
+      match: Number(row?.match_count ?? 0),
+      mismatch: Number(row?.mismatch_count ?? 0),
+      error: Number(row?.error_count ?? 0),
+      lastCheck: row?.last_checked_at ?? null,
     };
-  }, [data]);
+  }, [summaryRows]);
+
+  // Every filter change starts the table again from its first page.
+  const changeGroup = (next: string) => {
+    setGroup(next);
+    setPageSize(PAGE_SIZE);
+    // Tables of other groups would match nothing once the group is narrowed.
+    if (next) setPicked((current) => current.filter((item) => item.group === next));
+  };
+  const changeSearch = (value: string) => {
+    setSearchInput(value);
+    setPageSize(PAGE_SIZE);
+  };
+  const toggleTable = (tableGroup: string, table: string) => {
+    setPageSize(PAGE_SIZE);
+    setPicked((current) => {
+      const key = tableKey(tableGroup, table);
+      if (current.some((item) => tableKey(item.group, item.table) === key)) {
+        return current.filter((item) => tableKey(item.group, item.table) !== key);
+      }
+      if (current.length >= MAX_PICKED) return current;
+      // Keep the color the table has in the chart when that slot is free, else take the lowest free slot, so
+      // picking a table does not repaint it and tables already picked keep their colors.
+      const used = new Set(current.map((item) => item.slot));
+      const shown = chart.series.findIndex((item) => item.key === key);
+      const onScreen = shown >= 0 && shown < MAX_PICKED && !current.length ? shown : -1;
+      const slot =
+        onScreen >= 0 && !used.has(onScreen)
+          ? onScreen
+          : ([...Array(MAX_PICKED).keys()].find((index) => !used.has(index)) ?? 0);
+      return [...current, { group: tableGroup, table, slot }];
+    });
+  };
+  const clearFilters = () => {
+    setGroup('');
+    setSearchInput('');
+    setPicked([]);
+    setPageSize(PAGE_SIZE);
+  };
 
   return (
     <>
@@ -276,19 +329,48 @@ export function RowChecksPage() {
           </AlertDescription>
         </Alert>
       )}
-      <SummaryStrip summary={summary} job={job} loading={loading} />
-      <RowCheckDailyChart location={location} revision={revision} />
+      <RowCheckFilterBar
+        location={location}
+        revision={revision}
+        group={group}
+        onGroupChange={changeGroup}
+        searchInput={searchInput}
+        onSearchInputChange={changeSearch}
+        picked={picked}
+        onToggle={toggleTable}
+        onClear={clearFilters}
+        colors={chart.colors}
+        onRefresh={refresh}
+      />
+      <SummaryStrip summary={summary} job={job} loading={summaryLoading} filtered={filtered} />
+      <RowCheckDailyChart chart={chart} picked={picked.length} filtered={filtered} />
       {job && <RunStrip job={job} activeRuns={activeRuns} />}
-      <div className="mb-4 flex gap-2">
-        <Input
-          aria-label="Filter row checks"
-          placeholder="Filter group or source table"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Button variant="outline" onClick={refresh} aria-label="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-base font-semibold">Tables</h2>
+        <Select
+          value={status || 'all'}
+          onValueChange={(value) => {
+            setStatus(value === 'all' ? '' : (value as StatusFilter));
+            setPageSize(PAGE_SIZE);
+          }}
+        >
+          <SelectTrigger className="h-8 w-48" aria-label="Status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="attention">Needs attention</SelectItem>
+            <SelectItem value="match">Match</SelectItem>
+            <SelectItem value="unchecked">Not checked</SelectItem>
+          </SelectContent>
+        </Select>
+        {!loading && data && data.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {data.length < totalCount
+              ? `Showing ${data.length.toLocaleString()} of ${totalCount.toLocaleString()} tables, problems first`
+              : `${totalCount.toLocaleString()} ${totalCount === 1 ? 'table' : 'tables'}, problems first`}
+          </span>
+        )}
       </div>
       {loading ? (
         <Skeleton className="h-80" />
@@ -297,9 +379,25 @@ export function RowChecksPage() {
       ) : !data?.length ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>No enabled tables</EmptyTitle>
-            <EmptyDescription>Row checks run on the enabled rows of the configuration table.</EmptyDescription>
+            <EmptyTitle>{filtered || status ? 'No table matches the filters' : 'No enabled tables'}</EmptyTitle>
+            <EmptyDescription>
+              {filtered || status
+                ? 'Change or clear the filters to see more tables.'
+                : 'Row checks run on the enabled rows of the configuration table.'}
+            </EmptyDescription>
           </EmptyHeader>
+          {(filtered || status) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                clearFilters();
+                setStatus('');
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
         </Empty>
       ) : (
         <Card className="overflow-hidden">
@@ -326,91 +424,96 @@ export function RowChecksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...data]
-                .sort((a, b) => severity(a) - severity(b))
-                .map((row) => {
-                  const key = `${row.ingestion_group}/${row.source_table_name}`;
-                  const basicRunning = activeRuns.some((run) => run.checkMode === 'basic' && runCovers(run, row));
-                  const detailedRunning = activeRuns.some((run) => run.checkMode === 'detailed' && runCovers(run, row));
-                  const difference = Number(row.basic_count_diff ?? 0);
-                  return (
-                    <TableRow key={key}>
-                      <TableCell className="max-w-80">
+              {data.map((row) => {
+                const key = `${row.ingestion_group}/${row.source_table_name}`;
+                const basicRunning = activeRuns.some((run) => run.checkMode === 'basic' && runCovers(run, row));
+                const detailedRunning = activeRuns.some((run) => run.checkMode === 'detailed' && runCovers(run, row));
+                const difference = Number(row.basic_count_diff ?? 0);
+                return (
+                  <TableRow key={key}>
+                    <TableCell className="max-w-80">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-mono text-sm font-medium" title={row.source_table_name}>
+                          {row.source_table_name}
+                        </span>
+                        <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
+                          {row.ingestion_group}
+                        </Badge>
+                      </div>
+                      <div className="truncate font-mono text-xs text-muted-foreground" title={row.target_table_fqn}>
+                        → {row.target_table_fqn}
+                      </div>
+                    </TableCell>
+                    <TableCell className="check-group-divider text-right tabular-nums">
+                      {count(row.basic_source_count)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{count(row.basic_target_count)}</TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums ${
+                        difference ? 'font-semibold text-destructive' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {row.basic_count_diff == null ? '—' : signed(row.basic_count_diff)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        <CheckStatus status={row.basic_status} running={basicRunning} />
+                        {row.basic_status && <CheckedAt value={row.basic_checked_at} />}
+                        <CheckError message={row.basic_error} />
+                        <CheckedRange range={row.basic_checked_range} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="check-group-divider">
+                      <div className="flex flex-col items-start gap-1">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-mono text-sm font-medium" title={row.source_table_name}>
-                            {row.source_table_name}
-                          </span>
-                          <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
-                            {row.ingestion_group}
-                          </Badge>
+                          <CheckStatus status={row.detailed_status} running={detailedRunning} />
+                          {row.detailed_status && <CheckedAt value={row.detailed_checked_at} />}
                         </div>
-                        <div className="truncate font-mono text-xs text-muted-foreground" title={row.target_table_fqn}>
-                          → {row.target_table_fqn}
-                        </div>
-                      </TableCell>
-                      <TableCell className="check-group-divider text-right tabular-nums">
-                        {count(row.basic_source_count)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{count(row.basic_target_count)}</TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${
-                          difference ? 'font-semibold text-destructive' : 'text-muted-foreground'
-                        }`}
-                      >
-                        {row.basic_count_diff == null ? '—' : signed(row.basic_count_diff)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col items-start gap-1">
-                          <CheckStatus status={row.basic_status} running={basicRunning} />
-                          {row.basic_status && <CheckedAt value={row.basic_checked_at} />}
-                          <CheckError message={row.basic_error} />
-                          <CheckedRange range={row.basic_checked_range} />
-                        </div>
-                      </TableCell>
-                      <TableCell className="check-group-divider">
-                        <div className="flex flex-col items-start gap-1">
-                          <div className="flex items-center gap-2">
-                            <CheckStatus status={row.detailed_status} running={detailedRunning} />
-                            {row.detailed_status && <CheckedAt value={row.detailed_checked_at} />}
-                          </div>
-                          <DetailedFindings row={row} />
-                          <CheckError message={row.detailed_error} />
-                          <CheckedRange range={row.detailed_checked_range} />
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDetailedFor(row)}
-                            disabled={!job || starting !== null || detailedRunning}
-                            title={
-                              job
-                                ? 'Compare chunk aggregates, then the rows of the chunks that differ'
-                                : 'Set up the row check job first'
-                            }
-                          >
-                            <ScanSearch className="mr-1.5 h-3.5 w-3.5" />
-                            {starting === key ? 'Starting…' : 'Run detailed'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setDetails(row)}
-                            disabled={!row.basic_status && !row.detailed_status}
-                            aria-label={`Details of ${row.source_table_name}`}
-                            title="Details"
-                          >
-                            <PanelRightOpen className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                        <DetailedFindings row={row} />
+                        <CheckError message={row.detailed_error} />
+                        <CheckedRange range={row.detailed_checked_range} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDetailedFor(row)}
+                          disabled={!job || starting !== null || detailedRunning}
+                          title={
+                            job
+                              ? 'Compare chunk aggregates, then the rows of the chunks that differ'
+                              : 'Set up the row check job first'
+                          }
+                        >
+                          <ScanSearch className="mr-1.5 h-3.5 w-3.5" />
+                          {starting === key ? 'Starting…' : 'Run detailed'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDetails(row)}
+                          disabled={!row.basic_status && !row.detailed_status}
+                          aria-label={`Details of ${row.source_table_name}`}
+                          title="Details"
+                        >
+                          <PanelRightOpen className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
+          {data.length < totalCount && (
+            <div className="flex justify-center border-t p-3">
+              <Button variant="outline" size="sm" onClick={() => setPageSize((size) => size + PAGE_SIZE)}>
+                Show {Math.min(PAGE_SIZE, totalCount - data.length).toLocaleString()} more
+              </Button>
+            </div>
+          )}
         </Card>
       )}
       <RowCheckJobDialog
@@ -534,7 +637,17 @@ function DetailedCheckDialog({
 type Summary = { tables: number; match: number; mismatch: number; error: number; lastCheck: string | null };
 
 /** The latest basic check across the listed tables, in one line. */
-function SummaryStrip({ summary, job, loading }: { summary: Summary; job: RowCheckJob | null; loading: boolean }) {
+function SummaryStrip({
+  summary,
+  job,
+  loading,
+  filtered,
+}: {
+  summary: Summary;
+  job: RowCheckJob | null;
+  loading: boolean;
+  filtered: boolean;
+}) {
   if (loading) return <Skeleton className="mb-6 h-12" />;
   const schedule = job?.schedule;
   const items = [
@@ -551,7 +664,11 @@ function SummaryStrip({ summary, job, loading }: { summary: Summary; job: RowChe
     // A plain bordered row: Card lays its children out as a column.
     <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
       <span className="font-medium">
-        Basic check <span className="font-normal text-muted-foreground">· {summary.tables} enabled tables</span>
+        Basic check{' '}
+        <span className="font-normal text-muted-foreground">
+          · {summary.tables.toLocaleString()} {filtered ? 'filtered' : 'enabled'}{' '}
+          {summary.tables === 1 ? 'table' : 'tables'}
+        </span>
       </span>
       {items.map(({ Icon, value, label, tone }) => (
         <span key={label} className={`flex items-center gap-1.5 ${value ? tone : 'text-muted-foreground'}`}>

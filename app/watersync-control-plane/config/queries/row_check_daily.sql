@@ -2,6 +2,7 @@
 -- @param row_check_table STRING
 -- @param days INT
 -- @param ingestion_group STRING
+-- @param search STRING
 -- @param tables STRING
 -- @param top INT
 -- @param refresh_token INT
@@ -9,7 +10,7 @@
 -- the previous checked day (net of deletes). One extra day is read so the first day shown has a previous day; a
 -- day with no earlier day falls back to the growth between its own first and last check.
 --
--- ingestion_group narrows to one group ('' for all). tables is a JSON array of {"group", "table"} to chart;
+-- ingestion_group narrows to one group ('' for all) and search to tables whose name contains it. tables is a JSON array of {"group", "table"} to chart;
 -- when it is empty, the :top tables with the most rows ingested are kept by name and the others add up into one
 -- "Other tables" series (its difference adds up absolute differences, so opposite ones cannot cancel out).
 -- table_count is the number of tables matching the filters, before that folding.
@@ -38,6 +39,7 @@ daily AS (
     AND r.checked_range IS NULL
     AND r.checked_at >= date_sub(current_date(), :days)
     AND (:ingestion_group = '' OR r.ingestion_group = :ingestion_group)
+    AND (:search = '' OR lower(r.source_table_name) LIKE concat('%', lower(:search), '%'))
     AND (p.tables IS NULL OR size(p.tables) = 0
       OR exists(p.tables, t -> t.group = r.ingestion_group AND t.table = r.source_table_name))
   GROUP BY r.ingestion_group, r.source_table_name, to_date(r.checked_at)

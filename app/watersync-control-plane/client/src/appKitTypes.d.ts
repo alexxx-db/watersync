@@ -87,6 +87,7 @@ declare module '@databricks/appkit-ui/react' {
         row_check_table: StringParam;
         days: IntParam;
         ingestion_group: StringParam;
+        search: StringParam;
         tables: StringParam;
         top: IntParam;
         refresh_token: IntParam;
@@ -118,7 +119,11 @@ declare module '@databricks/appkit-ui/react' {
       parameters: {
         config_table: StringParam;
         row_check_table: StringParam;
+        ingestion_group: StringParam;
         search: StringParam;
+        tables: StringParam;
+        status: StringParam;
+        page_size: IntParam;
         refresh_token: IntParam;
       };
       result: Array<{
@@ -151,6 +156,26 @@ declare module '@databricks/appkit-ui/react' {
         detailed_drilled_chunks: number | null;
         detailed_chunk_details: unknown;
         detailed_checked_range: string | null;
+        severity: number | string;
+        total_count: number | string;
+      }>;
+    };
+    row_check_summary: {
+      name: 'row_check_summary';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        tables: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        table_count: number | string;
+        match_count: number | string;
+        mismatch_count: number | string;
+        error_count: number | string;
+        last_checked_at: string | null;
       }>;
     };
   }
