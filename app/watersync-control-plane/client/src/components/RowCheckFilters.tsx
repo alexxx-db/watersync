@@ -26,6 +26,8 @@ import type { Location } from '../types';
 import { fqn } from '../utils';
 
 const ALL_GROUPS = '__all__';
+// Matches row_check_table_options.sql's LIMIT.
+const OPTION_LIMIT = 50;
 
 /** Searchable, server-side list of enabled tables; picks up to MAX_PICKED. */
 function TablePicker({
@@ -69,7 +71,7 @@ function TablePicker({
           aria-label="Source tables"
           className="min-w-56 justify-between"
         >
-          {picked.length ? `${picked.length} of ${MAX_PICKED} tables` : 'All tables'}
+          {picked.length ? `${picked.length} ${picked.length === 1 ? 'table' : 'tables'} picked` : 'All tables'}
           <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -104,8 +106,12 @@ function TablePicker({
           </CommandList>
           <div className="border-t px-3 py-2 text-xs text-muted-foreground">
             {full
-              ? `${MAX_PICKED} tables at most, one per chart color.`
-              : 'Shows the first 50 matches; type to narrow.'}
+              ? `${MAX_PICKED} tables picked, the most the chart can color. Remove one to pick another.`
+              : `Pick up to ${MAX_PICKED} tables (one chart color each)${
+                  (data?.length ?? 0) >= OPTION_LIMIT
+                    ? `. Showing the first ${OPTION_LIMIT} matches; type to narrow.`
+                    : '.'
+                }`}
           </div>
         </Command>
       </PopoverContent>
