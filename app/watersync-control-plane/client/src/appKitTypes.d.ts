@@ -86,17 +86,32 @@ declare module '@databricks/appkit-ui/react' {
         config_table: StringParam;
         row_check_table: StringParam;
         days: IntParam;
+        ingestion_group: StringParam;
+        tables: StringParam;
+        top: IntParam;
         refresh_token: IntParam;
       };
       result: Array<{
         day: string;
         ingestion_group: string;
         source_table_name: string;
+        is_other: boolean | string;
+        table_count: number | string;
         source_count: number | string | null;
         target_count: number | string | null;
         rows_ingested: number | string | null;
         count_diff: number | string | null;
       }>;
+    };
+    row_check_table_options: {
+      name: 'row_check_table_options';
+      parameters: {
+        config_table: StringParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{ ingestion_group: string; source_table_name: string }>;
     };
     row_check_results: {
       name: 'row_check_results';
