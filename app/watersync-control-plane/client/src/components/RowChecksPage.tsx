@@ -178,7 +178,7 @@ export function RowChecksPage() {
   const filterParams = useMemo(
     () => ({
       config_table: sql.string(fqn(location, 'jdbc_ingestion_config')),
-      row_check_table: sql.string(fqn(location, 'watersync_row_checks')),
+      row_check_table: sql.string(fqn(location, '_watersync_row_checks')),
       ingestion_group: sql.string(group),
       search: sql.string(search),
       tables: sql.string(pickedTablesParam(picked)),
@@ -1013,7 +1013,7 @@ function RowCheckJobDialog({
               [{location.catalog}.{location.schema}] Row Checks
             </span>
             , checks every enabled table at this location and writes to{' '}
-            <span className="font-mono">{fqn(location, 'watersync_row_checks')}</span>.
+            <span className="font-mono">{fqn(location, '_watersync_row_checks')}</span>.
           </DialogDescription>
         </DialogHeader>
         <form key={`${open}-${job?.jobId ?? 'new'}`} onSubmit={(event) => void submit(event)} className="space-y-4">

@@ -10,7 +10,7 @@ const taskKey = 'row_check';
 
 // One job per metadata location: it checks every enabled table of every group there.
 export const rowCheckJobName = (catalog: string, schema: string) => `[${catalog}.${schema}] Row Checks`;
-const rowCheckFqn = (catalog: string, schema: string) => `${catalog}.${schema}.watersync_row_checks`;
+const rowCheckFqn = (catalog: string, schema: string) => `${catalog}.${schema}._watersync_row_checks`;
 
 async function findRowCheckJob(catalog: string, schema: string) {
   const name = rowCheckJobName(catalog, schema);

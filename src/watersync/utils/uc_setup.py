@@ -23,7 +23,7 @@ class UnityCatalogSetup:
 
     @property
     def row_check_table(self) -> str:
-        return f"{self.schema_fqn}.watersync_row_checks"
+        return f"{self.schema_fqn}._watersync_row_checks"
 
     @property
     def log_table(self) -> str:

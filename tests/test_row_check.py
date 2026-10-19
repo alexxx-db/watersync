@@ -46,7 +46,7 @@ def make_runner(check_mode: str = "basic") -> RowCheckRunner:
     return RowCheckRunner(
         FakeSpark(),
         runtime,
-        results_fqn="main.watersync.watersync_row_checks",
+        results_fqn="main.watersync._watersync_row_checks",
         check_mode=check_mode,
         job_run_id="42",
     )
@@ -157,9 +157,9 @@ class RowCheckTest(unittest.TestCase):
 
     def test_results_table_is_not_replaced(self) -> None:
         spark = FakeSpark()
-        RowCheckRunner.create_results_table(spark, "main.watersync.watersync_row_checks")
+        RowCheckRunner.create_results_table(spark, "main.watersync._watersync_row_checks")
         self.assertIn("CREATE TABLE IF NOT EXISTS", spark.statements[0])
-        self.assertIn("main.watersync.watersync_row_checks", spark.statements[0])
+        self.assertIn("main.watersync._watersync_row_checks", spark.statements[0])
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ describe('row check job', () => {
     expect(state.job?.name).toBe('[dev.watersync] Row Checks');
     expect(parameters).toMatchObject({
       configuration_fqn: 'dev.watersync.jdbc_ingestion_config',
-      row_check_fqn: 'dev.watersync.watersync_row_checks',
+      row_check_fqn: 'dev.watersync._watersync_row_checks',
       check_mode: 'basic',
       source_table_name: '',
       max_parallel_tables: '6',

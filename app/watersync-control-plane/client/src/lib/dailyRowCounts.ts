@@ -127,7 +127,7 @@ export function useDailyRowCounts(location: Location, revision: number, filters:
   const params = useMemo(
     () => ({
       config_table: sql.string(fqn(location, 'jdbc_ingestion_config')),
-      row_check_table: sql.string(fqn(location, 'watersync_row_checks')),
+      row_check_table: sql.string(fqn(location, '_watersync_row_checks')),
       days: sql.int(DAILY_DAYS),
       ingestion_group: sql.string(filters.group),
       search: sql.string(filters.search),
