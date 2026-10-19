@@ -1,6 +1,6 @@
 # Control Plane App
 
-`app/watersync-control-plane` is a Databricks App (AppKit, React, TypeScript) for running WaterSync without writing SQL. It works on one metadata location (`<catalog>.<schema>`) at a time, picked on the first screen and changeable from the header. When you select a location, the app creates the schema and any missing metadata tables and columns there (see [Migrations](App-Development.md#migrations)).
+`app/watersync-control-plane` is a Databricks App (AppKit, React, TypeScript) for running WaterSync without writing SQL. It works on one metadata location (`<catalog>.<schema>`) at a time, picked on the first screen and changeable from the header. When you select a location, the app creates the schema and any missing metadata tables and columns there (see [Migrations](App-Development#migrations)).
 
 ## Header
 
@@ -10,7 +10,7 @@ whole location, available on every page:
 - **Export** downloads the location's configuration (source tables and job settings) as JSON.
 - **Import** loads such a file into the location, after validating it and showing a preview.
 
-See [Import and Export](Import-and-Export.md).
+See [Import and Export](Import-and-Export).
 
 ### New release notice
 
@@ -19,7 +19,7 @@ read that release's notes and open it on GitHub. To update, redeploy the app fro
 
 The app checks `https://api.github.com/repos/databricks-industry-solutions/watersync/releases/latest` from the
 server at most once an hour. If the workspace has no outbound internet access, or there is no newer release, no
-triangle is shown. See [App Development](App-Development.md#release-check) to point the check at another
+triangle is shown. See [App Development](App-Development#release-check) to point the check at another
 repository or turn it off.
 
 ## Pages
@@ -28,9 +28,9 @@ repository or turn it off.
 | --- | --- |
 | **Overview** | Configured, enabled and failed source counts, and the latest pipeline activity, for the selected location |
 | **Configuration** | Add, edit and delete config rows. Discover source tables over a UC connection or a JDBC URL (SQL Server, Oracle, PostgreSQL, MySQL), optionally reading another database than the connection's (Oracle: service name), and infer key and watermark columns from primary-key constraints |
-| **Watermarks** | Inspect per-table state and schedule a full refresh for a single table (see [Full Refresh](CDC-Pipeline-and-Full-Refresh.md#full-refresh)) |
+| **Watermarks** | Inspect per-table state and schedule a full refresh for a single table (see [Full Refresh](CDC-Pipeline-and-Full-Refresh#full-refresh)) |
 | **Jobs** | Create or update a group's job and CDC pipeline (see [below](#jobs-created-by-the-app)), run it incrementally or as a full refresh, and edit its schedule. Two views, remembered per browser: **Blocks** (a card per job, the default) and **List** (one table row per job, easier to scan when there are many). Both show each job's status, schedule and last 10 runs |
-| **Row checks** | Compare each enabled source table with its target: a summary of the latest basic check (row counts, run daily by the location's row check job), daily rows ingested and differences, and per-group then per-table results, all filtered by group, picked tables or table name. Detailed checks (per-chunk sums and hashes, then the rows of differing chunks) are started per table. See [Row Checks](Row-Checks.md#the-row-checks-page) |
+| **Row checks** | Compare each enabled source table with its target: a summary of the latest basic check (row counts, run daily by the location's row check job), daily rows ingested and differences, and per-group then per-table results, all filtered by group, picked tables or table name. Detailed checks (per-chunk sums and hashes, then the rows of differing chunks) are started per table. See [Row Checks](Row-Checks#the-row-checks-page) |
 
 ## Deploying
 
@@ -64,4 +64,4 @@ The **Jobs** dialog builds one job per ingestion group, named `[<group>] Ingesti
 - Databricks keeps one serverless performance mode per job, so Job Compute and SDP Compute share it. It is sent whenever the job compute or the SDP pipeline is serverless.
 - Running as a user requires the app service principal to be a workspace admin. Running as another service principal requires it to have the Service Principal User role on that principal. The SDP run-as setting is ignored when you reuse an existing pipeline by ID.
 
-See [App Development](App-Development.md) for local development, the API routes and migrations.
+See [App Development](App-Development) for local development, the API routes and migrations.

@@ -1,6 +1,6 @@
 # Row Checks
 
-Row checks compare each enabled source table with its target table, so you can see whether the two systems hold the same rows. Run them from the **Row checks** page of the [Control Plane App](Control-Plane-App.md), or from Python or the CLI.
+Row checks compare each enabled source table with its target table, so you can see whether the two systems hold the same rows. Run them from the **Row checks** page of the [Control Plane App](Control-Plane-App), or from Python or the CLI.
 
 ## Basic and detailed checks
 
@@ -65,11 +65,11 @@ A row whose range column changed in the source but not yet in the target (for ex
 | Counts match but rows changed | An update did not move the watermark column forward, so it was never picked up |
 | Many rows missing after a reload | The staging or CDC pipeline did not finish; check the ingestion job's last run |
 
-A [full refresh](CDC-Pipeline-and-Full-Refresh.md#full-refresh) of the table resynchronizes it.
+A [full refresh](CDC-Pipeline-and-Full-Refresh#full-refresh) of the table resynchronizes it.
 
 ## The Row checks page
 
-The page of the [Control Plane App](Control-Plane-App.md) shows, from top to bottom:
+The page of the [Control Plane App](Control-Plane-App) shows, from top to bottom:
 
 - **Filter bar.** A group, up to 8 picked tables (one per chart color) and a table-name search, applied to every section below. The filtering runs on the SQL warehouse, so the page works the same with thousands of tables.
 - **Summary.** One line with the latest basic check of the filtered tables: how many match, differ or failed, the last check and the schedule.
@@ -91,7 +91,7 @@ A series or row made of several tables (a group, or "Other") adds up *absolute* 
 
 ## Results table
 
-Each check appends one row per table to `<catalog>.<schema>.watersync_row_checks`. The table is created by the app's migrations, by `UnityCatalogSetup.create_all()`, or by the first check.
+Each check appends one row per table to `<catalog>.<schema>._watersync_row_checks`. The table is created by the app's migrations, by `UnityCatalogSetup.create_all()`, or by the first check. Like every table whose name starts with `_`, it is managed by WaterSync: read it, but do not modify it.
 
 | Column | Contents |
 | --- | --- |
@@ -111,7 +111,7 @@ The app shows the latest basic and the latest detailed result of each table. Que
 
 ## The row check job
 
-The app creates one serverless job per metadata location, named `[<catalog>.<schema>] Row Checks`, from **Set up job** on the **Row checks** page. It runs `notebooks/Task - Row Check` from your Git repository and installs the package from the same branch, like the [ingestion jobs](Control-Plane-App.md#jobs-created-by-the-app).
+The app creates one serverless job per metadata location, named `[<catalog>.<schema>] Row Checks`, from **Set up job** on the **Row checks** page. It runs `notebooks/Task - Row Check` from your Git repository and installs the package from the same branch, like the [ingestion jobs](Control-Plane-App#jobs-created-by-the-app).
 
 | Job parameter | Default | Meaning |
 | --- | --- | --- |
@@ -139,7 +139,7 @@ runtime = JdbcRuntimeSettings(
     source_table_name="public.orders",  # optional
 )
 results = RowCheckRunner(
-    spark, runtime, results_fqn="main.watersync.watersync_row_checks", check_mode="detailed"
+    spark, runtime, results_fqn="main.watersync._watersync_row_checks", check_mode="detailed"
 ).run()
 ```
 
@@ -147,7 +147,7 @@ results = RowCheckRunner(
 watersync-row-check \
   --configuration-fqn main.watersync.jdbc_ingestion_config \
   --watermark-fqn main.watersync.jdbc_ingestion_watermark \
-  --row-check-fqn main.watersync.watersync_row_checks \
+  --row-check-fqn main.watersync._watersync_row_checks \
   --check-mode detailed \
   --source-table-name public.orders \
   --range-from -30d
