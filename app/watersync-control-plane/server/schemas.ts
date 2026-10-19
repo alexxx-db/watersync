@@ -236,6 +236,17 @@ export const rowCheckJobPayloadSchema = locationSchema.extend({
   gitBranch: jobPayloadSchema.shape.gitBranch,
   maxParallelTables: z.number().int().min(1).max(32),
   schedule: scheduleSchema,
+  // The same compute and identity options as an ingestion job: not every workspace has serverless jobs.
+  compute: computeSchema.prefault({
+    mode: 'SERVERLESS',
+    performanceTarget: 'STANDARD',
+    sparkVersion: '',
+    driverNodeTypeId: '',
+    workerNodeTypeId: '',
+    minWorkers: 1,
+    maxWorkers: 4,
+  }),
+  runAs: runAsSchema.shape.job,
 });
 export const rowCheckRunPayloadSchema = locationSchema.extend({
   checkMode: z.enum(['basic', 'detailed']),
@@ -273,6 +284,7 @@ export const importPayloadSchema = locationSchema.extend({
 export type SourceDiscovery = z.infer<typeof sourceDiscoverySchema>;
 export type SourceDatabaseType = z.infer<typeof sourceDatabaseType>;
 export type PipelineCompute = z.infer<typeof pipelineComputeSchema>;
+export type JobCompute = z.infer<typeof computeSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
 export type ConfigPayload = z.infer<typeof configSchema>;
 export type JobPayload = z.infer<typeof jobPayloadSchema>;

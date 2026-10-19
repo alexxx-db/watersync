@@ -50,7 +50,7 @@ A check can be limited to a range of rows, so a large table can be checked one s
 
 - The range is `range_from <= column < range_to`; leave a bound empty for no limit on that side.
 - The column is `range_column`, or by default the table's chunk column (see tier 2). A table without a chunk column needs `range_column`, otherwise it is reported as `ERROR`.
-- Bounds are a number, a date (`2026-09-01`), a timestamp (`2026-09-01 12:00:00`) or a number of days back (`-30d`, from midnight of the job's clock, which is UTC on serverless). They are parsed for the column's type and never inserted into SQL as text.
+- Bounds are a number, a date (`2026-09-01`), a timestamp (`2026-09-01 12:00:00`) or a number of days back (`-30d`, from midnight of the job's clock, which is UTC on serverless and on job clusters unless they set another time zone). They are parsed for the column's type and never inserted into SQL as text.
 - The range applies to every tier, on both sides: the counts, the chunk aggregates and the rows tier 3 reads. With integer chunks, the 100 ranges are spread over the checked rows only, so a narrow range gets narrow chunks.
 - Each result keeps the range in `checked_range`, and the app shows it under the result, so a partial check is never mistaken for the whole table.
 
@@ -111,7 +111,16 @@ The app shows the latest basic and the latest detailed result of each table. Que
 
 ## The row check job
 
-The app creates one serverless job per metadata location, named `[<catalog>.<schema>] Row Checks`, from **Set up job** on the **Row checks** page. It runs `notebooks/Task - Row Check` from your Git repository and installs the package from the same branch, like the [ingestion jobs](Control-Plane-App#jobs-created-by-the-app).
+The app creates one job per metadata location, named `[<catalog>.<schema>] Row Checks`, from **Set up job** on the **Row checks** page. It runs `notebooks/Task - Row Check` from your Git repository and installs the package from the same branch, like the [ingestion jobs](Control-Plane-App#jobs-created-by-the-app), and its dialog has the same tabs, minus the SDP ones:
+
+| Tab | Settings |
+| --- | --- |
+| **Git source & execution** | GitHub repository and branch, and how many tables are checked at the same time |
+| **Job Compute** | **Serverless** (default) with a performance mode, or a **shared autoscaling job cluster** (Databricks Runtime, driver and worker node types, min/max workers) for workspaces without serverless jobs |
+| **Schedule** | Quartz cron expression, time zone, active or paused; or manual runs only |
+| **Run as** | The job's owner (the app service principal, default), a user, or a service principal |
+
+The dialog opens with the job's current settings, read back from the Databricks API. Detailed checks aggregate the whole target table in Spark, so size a job cluster like the ingestion one.
 
 | Job parameter | Default | Meaning |
 | --- | --- | --- |
@@ -124,7 +133,7 @@ The app creates one serverless job per metadata location, named `[<catalog>.<sch
 
 The schedule (`0 0 6 * * ?`, UTC, by default) runs the basic check of every table. **Detailed check** runs the job once with `check_mode=detailed` and that table. The job allows 4 concurrent runs, so a detailed check can start while the scheduled check is running. The page shows the job's last runs, and while one runs it polls every 15 seconds and reloads the results when it ends.
 
-The job runs as the app service principal, which needs the same source access as the ingestion jobs (UC connections, secret scopes or UC secrets) and `SELECT` on the target tables.
+Whichever identity the job runs as needs the same source access as the ingestion jobs (UC connections, secret scopes or UC secrets) and `SELECT` on the target tables. Running as a user or another service principal has the same requirements for the app as for an ingestion job.
 
 ## From Python or the CLI
 

@@ -32,6 +32,10 @@ import {
   Skeleton,
   Table,
   TableBody,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   TableCell,
   TableHead,
   TableHeader,
@@ -59,6 +63,9 @@ import { displayTime, formString, fqn, relativeTime } from '../utils';
 import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ScheduleFields, Toggle } from './shared';
 import { RowCheckDailyChart } from './RowCheckDailyChart';
+import { JobComputeFields, NodeTypeOptions, RunAsFields } from './JobFields';
+import { computeFromForm, useNodeTypes } from '../lib/jobCompute';
+import type { ComputeMode, PerformanceTarget } from '../lib/jobCompute';
 import { RowCheckFilterBar } from './RowCheckFilters';
 import { useDailyRowCounts } from '../lib/dailyRowCounts';
 import type { DailyLevel } from '../lib/dailyRowCounts';
@@ -962,18 +969,70 @@ function RowCheckJobDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  return (
+    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{job ? 'Row check job settings' : 'Set up the row check job'}</DialogTitle>
+          <DialogDescription>
+            One job,{' '}
+            <span className="font-mono">
+              [{location.catalog}.{location.schema}] Row Checks
+            </span>
+            , checks every enabled table at this location and writes to{' '}
+            <span className="font-mono">{fqn(location, '_watersync_row_checks')}</span>. It offers the same compute and
+            identity options as an ingestion job.
+          </DialogDescription>
+        </DialogHeader>
+        {/* Remounted on every open, so the fields start from the job's current settings. */}
+        {open && (
+          <RowCheckJobForm
+            key={job?.jobId ?? 'new'}
+            job={job}
+            location={location}
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RowCheckJobForm({
+  job,
+  location,
+  onClose,
+  onSaved,
+}: {
+  job: RowCheckJob | null;
+  location: Location;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // A new job is scheduled daily; an existing one keeps what the Databricks API reports.
-  const [scheduleEnabled, setScheduleEnabled] = useState(true);
-  const [scheduleActive, setScheduleActive] = useState(true);
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    setScheduleEnabled(job ? Boolean(job.schedule) : true);
-    setScheduleActive(job?.schedule?.pause_status !== 'PAUSED');
-  }, [open, job]);
+  const [tab, setTab] = useState('source');
+  // A new job is scheduled daily on serverless as the app; an existing one keeps what the Databricks API reports.
+  const [scheduleEnabled, setScheduleEnabled] = useState(job ? Boolean(job.schedule) : true);
+  const [scheduleActive, setScheduleActive] = useState(job?.schedule?.pause_status !== 'PAUSED');
+  const [computeMode, setComputeMode] = useState<ComputeMode>(job?.compute.mode ?? 'SERVERLESS');
+  const [performanceTarget, setPerformanceTarget] = useState<PerformanceTarget>(
+    job?.compute.performanceTarget ?? 'STANDARD'
+  );
+  const [runAsMode, setRunAsMode] = useState<string>(job?.runAs.mode ?? 'DEFAULT');
+  const nodeTypes = useNodeTypes(computeMode === 'JOB_CLUSTER');
   const schedule = job?.schedule ?? { quartz_cron_expression: '0 0 6 * * ?', timezone_id: 'UTC' };
+  // Inactive tabs are hidden, so the browser cannot focus an invalid field there and blocks the submit
+  // silently. Reveal the tab holding the first invalid field and say what is missing.
+  const revealInvalidField = (event: FormEvent<HTMLFormElement>) => {
+    const field = event.target as HTMLInputElement;
+    if (event.currentTarget.querySelector(':invalid') !== field) return;
+    const fieldTab = field.closest<HTMLElement>('[data-tab]')?.dataset.tab;
+    if (fieldTab) setTab(fieldTab);
+    const label = field.labels?.[0]?.textContent ?? field.getAttribute('aria-label') ?? field.name;
+    setError(`Check "${label}": ${field.validationMessage}`);
+  };
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
@@ -993,31 +1052,29 @@ function RowCheckJobDialog({
             timezoneId: formString(form, 'timezoneId', 'UTC'),
             pauseStatus: scheduleActive ? 'UNPAUSED' : 'PAUSED',
           },
+          compute: computeFromForm(form, computeMode, performanceTarget),
+          runAs: { mode: runAsMode, principal: formString(form, 'jobRunAsPrincipal', '') },
         }),
       });
       onSaved();
     } catch (x) {
-      setError(reportError('row_checks.job_save', x, location));
+      setError(reportError('row_checks.job_save', x, { ...location, computeMode }));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{job ? 'Row check job settings' : 'Set up the row check job'}</DialogTitle>
-          <DialogDescription>
-            One serverless job,{' '}
-            <span className="font-mono">
-              [{location.catalog}.{location.schema}] Row Checks
-            </span>
-            , checks every enabled table at this location and writes to{' '}
-            <span className="font-mono">{fqn(location, '_watersync_row_checks')}</span>.
-          </DialogDescription>
-        </DialogHeader>
-        <form key={`${open}-${job?.jobId ?? 'new'}`} onSubmit={(event) => void submit(event)} className="space-y-4">
-          {error && <ErrorState message={error} />}
+    <form onSubmit={(event) => void submit(event)} onInvalidCapture={revealInvalidField} className="space-y-4">
+      {error && <ErrorState message={error} />}
+      <NodeTypeOptions nodeTypes={nodeTypes} />
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="source">Git source &amp; execution</TabsTrigger>
+          <TabsTrigger value="compute">Job Compute</TabsTrigger>
+          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="run-as">Run as</TabsTrigger>
+        </TabsList>
+        <TabsContent value="source" data-tab="source" forceMount className="mt-4 data-[state=inactive]:hidden">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="row-check-git-url">GitHub repository</Label>
@@ -1046,6 +1103,19 @@ function RowCheckJobDialog({
               />
             </div>
           </div>
+        </TabsContent>
+        <TabsContent value="compute" data-tab="compute" forceMount className="mt-4 data-[state=inactive]:hidden">
+          <JobComputeFields
+            mode={computeMode}
+            onModeChange={setComputeMode}
+            performanceTarget={performanceTarget}
+            onPerformanceTargetChange={setPerformanceTarget}
+            nodeTypes={nodeTypes}
+            saved={job?.compute}
+            clusterNote="The row check task runs on this autoscaling job cluster. Detailed checks aggregate the whole target table in Spark, so size it like the ingestion cluster."
+          />
+        </TabsContent>
+        <TabsContent value="schedule" data-tab="schedule" forceMount className="mt-4 data-[state=inactive]:hidden">
           <ScheduleFields
             enabled={scheduleEnabled}
             onEnabledChange={setScheduleEnabled}
@@ -1053,20 +1123,41 @@ function RowCheckJobDialog({
             onActiveChange={setScheduleActive}
             schedule={schedule}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-3 text-xs text-muted-foreground">
             The schedule runs the basic check. Detailed checks only run when started from this page.
           </p>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={busy}>
-              {busy ? 'Saving…' : job ? 'Update job' : 'Create job'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </TabsContent>
+        <TabsContent value="run-as" data-tab="run-as" forceMount className="mt-4 data-[state=inactive]:hidden">
+          <div className="grid gap-4 md:grid-cols-2">
+            <RunAsFields
+              id="row-check-run-as"
+              label="Job runs as"
+              mode={runAsMode}
+              onModeChange={setRunAsMode}
+              principalName="jobRunAsPrincipal"
+              defaultPrincipal={job?.runAs.mode === runAsMode ? job.runAs.principal : ''}
+            />
+            <p className="self-end text-xs text-muted-foreground">
+              The identity needs the same source access as the ingestion jobs (UC connections, secrets) and SELECT on
+              the target tables.
+            </p>
+            <p className="text-xs text-muted-foreground md:col-span-2">
+              The owner is the app service principal that creates the job. Running as another user requires workspace
+              admin rights for the app; running as another service principal requires the app to have the Service
+              Principal User role on it.
+            </p>
+          </div>
+        </TabsContent>
+      </Tabs>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? 'Saving…' : job ? 'Update job' : 'Create job'}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 

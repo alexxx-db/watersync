@@ -49,6 +49,9 @@ import type { JobRow, Location } from '../types';
 import { fqn, displayTime, runStatus, statusVariant, runDuration, formString } from '../utils';
 import { useControl } from '../lib/control';
 import { PageTitle, ErrorState, ScheduleFields } from './shared';
+import { JobComputeFields, NodeTypeOptions, PerformanceTargetField, RunAsFields } from './JobFields';
+import { computeFromForm, useNodeTypes } from '../lib/jobCompute';
+import type { PerformanceTarget } from '../lib/jobCompute';
 
 export function JobsPage() {
   const { location, revision } = useControl();
@@ -492,14 +495,7 @@ function JobDialog({
   const [pipelinePhoton, setPipelinePhoton] = useState(false);
   const [jobRunAsMode, setJobRunAsMode] = useState('DEFAULT');
   const [pipelineRunAsMode, setPipelineRunAsMode] = useState('SAME_AS_JOB');
-  const [nodeTypes, setNodeTypes] = useState<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null } | null>(null);
-  useEffect(() => {
-    if (!open || (computeMode !== 'JOB_CLUSTER' && pipelineComputeMode !== 'CLASSIC') || nodeTypes) return;
-    // Best effort: without the list the node type fields stay empty and must be filled in manually.
-    api<{ nodeTypeIds: string[]; defaultNodeTypeId: string | null }>('/api/node-types')
-      .then(setNodeTypes)
-      .catch(() => setNodeTypes({ nodeTypeIds: [], defaultNodeTypeId: null }));
-  }, [open, computeMode, pipelineComputeMode, nodeTypes]);
+  const nodeTypes = useNodeTypes(open && (computeMode === 'JOB_CLUSTER' || pipelineComputeMode === 'CLASSIC'));
   // Inactive tabs are hidden, so the browser cannot focus an invalid field there and blocks the submit
   // silently. Reveal the tab holding the first invalid field and say what is missing.
   const revealInvalidField = (event: FormEvent<HTMLFormElement>) => {
@@ -542,15 +538,7 @@ function JobDialog({
             timezoneId: formString(form, 'timezoneId', 'America/New_York'),
             pauseStatus: scheduleActive ? 'UNPAUSED' : 'PAUSED',
           },
-          compute: {
-            mode: computeMode,
-            performanceTarget,
-            sparkVersion: formString(form, 'sparkVersion', ''),
-            driverNodeTypeId: formString(form, 'driverNodeTypeId', ''),
-            workerNodeTypeId: formString(form, 'workerNodeTypeId', ''),
-            minWorkers: Number(form.get('minWorkers') ?? 1),
-            maxWorkers: Number(form.get('maxWorkers') ?? 4),
-          },
+          compute: computeFromForm(form, computeMode, performanceTarget),
           pipelineCompute:
             pipelineComputeMode === 'CLASSIC'
               ? {
@@ -588,11 +576,7 @@ function JobDialog({
         <form onSubmit={(event) => void submit(event)} onInvalidCapture={revealInvalidField} className="space-y-4">
           {error && <ErrorState message={error} />}
           {groupsError && <ErrorState message={groupsError} />}
-          <datalist id="node-type-options">
-            {nodeTypes?.nodeTypeIds.map((id) => (
-              <option key={id} value={id} />
-            ))}
-          </datalist>
+          <NodeTypeOptions nodeTypes={nodeTypes} />
           <Tabs value={tab} onValueChange={setTab} className="w-full">
             <TabsList className={`grid w-full ${tabColumns[tabCount]}`}>
               <TabsTrigger value="job">Job configuration</TabsTrigger>
@@ -768,78 +752,15 @@ function JobDialog({
               </div>
             </TabsContent>
             <TabsContent value="compute" data-tab="compute" forceMount className="mt-4 data-[state=inactive]:hidden">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="compute-mode">Compute mode</Label>
-                  <Select value={computeMode} onValueChange={(value) => setComputeMode(value as typeof computeMode)}>
-                    <SelectTrigger id="compute-mode" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="SERVERLESS">Serverless</SelectItem>
-                      <SelectItem value="JOB_CLUSTER">Shared autoscaling job cluster</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {computeMode === 'SERVERLESS' && (
-                  <PerformanceTargetField
-                    id="performance-target"
-                    value={performanceTarget}
-                    onChange={setPerformanceTarget}
-                    sharedWith={hasCdcPipeline && pipelineComputeMode === 'SERVERLESS' ? 'SDP Compute' : null}
-                  />
-                )}
-                {computeMode === 'JOB_CLUSTER' && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="spark-version">Databricks Runtime</Label>
-                      <Input
-                        id="spark-version"
-                        name="sparkVersion"
-                        defaultValue="18.x-scala2.13"
-                        placeholder="18.x-scala2.13"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="driver-node-type">Driver node type</Label>
-                      <Input
-                        key={`driver-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="driver-node-type"
-                        name="driverNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="worker-node-type">Worker node type</Label>
-                      <Input
-                        key={`worker-${nodeTypes?.defaultNodeTypeId ?? ''}`}
-                        id="worker-node-type"
-                        name="workerNodeTypeId"
-                        list="node-type-options"
-                        defaultValue={nodeTypes?.defaultNodeTypeId ?? ''}
-                        placeholder={nodeTypes ? 'For example: i3.xlarge' : 'Loading node types\u2026'}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="min-workers">Minimum workers</Label>
-                      <Input id="min-workers" name="minWorkers" type="number" min="0" defaultValue="1" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="max-workers">Maximum workers</Label>
-                      <Input id="max-workers" name="maxWorkers" type="number" min="1" defaultValue="4" required />
-                    </div>
-                    <p className="text-xs text-muted-foreground md:col-span-2">
-                      The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses
-                      its own pipeline compute.
-                    </p>
-                  </div>
-                )}
-              </div>
+              <JobComputeFields
+                mode={computeMode}
+                onModeChange={setComputeMode}
+                performanceTarget={performanceTarget}
+                onPerformanceTargetChange={setPerformanceTarget}
+                performanceSharedWith={hasCdcPipeline && pipelineComputeMode === 'SERVERLESS' ? 'SDP Compute' : null}
+                nodeTypes={nodeTypes}
+                clusterNote="The planner and ingestion workers share this autoscaling job cluster. The SDP pipeline task uses its own pipeline compute."
+              />
             </TabsContent>
             {hasCdcPipeline && (
               <TabsContent
@@ -957,90 +878,8 @@ function JobDialog({
   );
 }
 
-type PerformanceTarget = 'STANDARD' | 'PERFORMANCE_OPTIMIZED';
-
-function PerformanceTargetField({
-  id,
-  value,
-  onChange,
-  sharedWith,
-}: {
-  id: string;
-  value: PerformanceTarget;
-  onChange: (value: PerformanceTarget) => void;
-  sharedWith: string | null;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>Serverless performance mode</Label>
-      <Select value={value} onValueChange={(next) => onChange(next as PerformanceTarget)}>
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="STANDARD">Standard</SelectItem>
-          <SelectItem value="PERFORMANCE_OPTIMIZED">Performance optimized</SelectItem>
-        </SelectContent>
-      </Select>
-      <p className="text-xs text-muted-foreground">
-        Standard favors cost efficiency; performance optimized favors faster startup and execution.
-        {sharedWith &&
-          ` Databricks applies one serverless performance mode per job, so this setting is shared with ${sharedWith}.`}
-      </p>
-    </div>
-  );
-}
-
 // Literal class names so Tailwind keeps them.
 const tabColumns: Record<number, string> = { 5: 'grid-cols-5', 6: 'grid-cols-6' };
-
-function RunAsFields({
-  id,
-  label,
-  mode,
-  onModeChange,
-  principalName,
-  allowSameAsJob = false,
-}: {
-  id: string;
-  label: string;
-  mode: string;
-  onModeChange: (value: string) => void;
-  principalName: string;
-  allowSameAsJob?: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Select value={mode} onValueChange={onModeChange}>
-        <SelectTrigger id={id} className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {allowSameAsJob && <SelectItem value="SAME_AS_JOB">Same as job</SelectItem>}
-          <SelectItem value="DEFAULT">Owner (app service principal)</SelectItem>
-          <SelectItem value="USER">User</SelectItem>
-          <SelectItem value="SERVICE_PRINCIPAL">Service principal</SelectItem>
-        </SelectContent>
-      </Select>
-      {(mode === 'USER' || mode === 'SERVICE_PRINCIPAL') && (
-        <Input
-          key={mode}
-          id={`${id}-principal`}
-          name={principalName}
-          aria-label={mode === 'USER' ? `${label}: user email` : `${label}: service principal application ID`}
-          type={mode === 'USER' ? 'email' : 'text'}
-          pattern={mode === 'SERVICE_PRINCIPAL' ? '[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}' : undefined}
-          title={mode === 'SERVICE_PRINCIPAL' ? 'Service principal application ID (UUID)' : undefined}
-          placeholder={
-            mode === 'USER' ? 'user@example.com' : 'Application ID, e.g. 00000000-0000-0000-0000-000000000000'
-          }
-          required
-        />
-      )}
-    </div>
-  );
-}
 
 function ScheduleDialog({ job, onClose, onSaved }: { job: JobRow | null; onClose: () => void; onSaved: () => void }) {
   const schedule = job?.settings?.schedule;

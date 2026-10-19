@@ -1,11 +1,12 @@
 import type { jobs } from '@databricks/sdk-experimental';
+import { toRunAs } from './schemas.js';
 import type { RowCheckJobPayload, RowCheckRunPayload } from './schemas.js';
 import { workspace, workspaceBaseUrl } from './sql.js';
 import { watersyncDependency } from './pipelines.js';
 import { logger } from './logging.js';
+import { jobCompute, readJobCompute, runAsIdentity, runAsTarget } from './jobCompute.js';
 
 export const rowCheckNotebookPath = 'notebooks/Task - Row Check';
-const environmentKey = 'watersync_environment';
 const taskKey = 'row_check';
 
 // One job per metadata location: it checks every enabled table of every group there.
@@ -28,17 +29,16 @@ const parameterValue = (run: jobs.BaseRun, name: string) => {
 /** Creates or updates the location's row check job. Its default run is the basic check, on the schedule. */
 export async function saveRowCheckJob(body: RowCheckJobPayload) {
   const name = rowCheckJobName(body.catalog, body.schema);
+  const compute = jobCompute(body.compute, watersyncDependency(body.gitUrl, body.gitBranch));
+  const runAs = toRunAs(body.runAs);
   const settings: jobs.JobSettings = {
     name,
     description: 'Compares WaterSync source tables with their targets. Created by the WaterSync control plane.',
     // Lets a detailed check started from the app run while the scheduled basic check is still going.
     max_concurrent_runs: 4,
-    environments: [
-      {
-        environment_key: environmentKey,
-        spec: { environment_version: '4', dependencies: [watersyncDependency(body.gitUrl, body.gitBranch)] },
-      },
-    ],
+    ...compute.settings,
+    ...(body.compute.mode === 'SERVERLESS' ? { performance_target: body.compute.performanceTarget } : {}),
+    ...(runAs ? { run_as: runAs } : {}),
     parameters: [
       { name: 'configuration_fqn', default: `${body.catalog}.${body.schema}.jdbc_ingestion_config` },
       { name: 'watermark_fqn', default: `${body.catalog}.${body.schema}.jdbc_ingestion_watermark` },
@@ -54,7 +54,7 @@ export async function saveRowCheckJob(body: RowCheckJobPayload) {
     tasks: [
       {
         task_key: taskKey,
-        environment_key: environmentKey,
+        ...compute.task,
         notebook_task: {
           notebook_path: rowCheckNotebookPath,
           source: 'GIT',
@@ -81,7 +81,14 @@ export async function saveRowCheckJob(body: RowCheckJobPayload) {
     jobId = (await workspace.jobs.create(settings as jobs.CreateJob)).job_id;
   }
   const action: 'created' | 'updated' = existingJobId ? 'updated' : 'created';
-  logger.info('row_checks.job_saved', { action, jobId, name, scheduled: body.schedule.enabled });
+  logger.info('row_checks.job_saved', {
+    action,
+    jobId,
+    name,
+    scheduled: body.schedule.enabled,
+    computeMode: body.compute.mode,
+    runAs: body.runAs.mode,
+  });
   return { jobId, action };
 }
 
@@ -118,6 +125,11 @@ export async function readRowCheckJob(catalog: string, schema: string) {
     gitBranch: settings?.git_source?.git_branch ?? 'main',
     maxParallelTables: Number(parameters.get('max_parallel_tables') ?? 4) || 4,
     schedule: settings?.schedule ?? null,
+    compute: readJobCompute(settings),
+    runAs: runAsTarget(
+      job.run_as_user_name ?? runAsIdentity(settings?.run_as) ?? job.creator_user_name,
+      job.creator_user_name
+    ),
     runs,
   };
 }

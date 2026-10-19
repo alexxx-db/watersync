@@ -120,6 +120,17 @@ export type RowCheckRun = {
   rangeFrom: string;
   rangeTo: string;
 };
+/** A job's compute, as the job APIs take it and read it back. */
+export type JobCompute = {
+  mode: 'SERVERLESS' | 'JOB_CLUSTER';
+  performanceTarget: 'STANDARD' | 'PERFORMANCE_OPTIMIZED';
+  sparkVersion: string;
+  driverNodeTypeId: string;
+  workerNodeTypeId: string;
+  minWorkers: number;
+  maxWorkers: number;
+};
+export type RunAsTarget = { mode: 'DEFAULT' | 'USER' | 'SERVICE_PRINCIPAL'; principal: string };
 /** The location's row check job, read back from the Databricks API (GET /api/row-checks/job). */
 export type RowCheckJob = {
   jobId: number;
@@ -128,5 +139,7 @@ export type RowCheckJob = {
   gitBranch: string;
   maxParallelTables: number;
   schedule: JobSchedule | null;
+  compute: JobCompute;
+  runAs: RunAsTarget;
   runs: RowCheckRun[];
 };
