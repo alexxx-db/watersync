@@ -9,7 +9,7 @@ Checks escalate in three tiers, so a full table is never read unless it has to b
 | Tier | Check | Runs |
 | --- | --- | --- |
 | 1 | **Row counts**: `SELECT COUNT(*)` on the source, the target's active rows in Spark | Basic check: on the job schedule (daily by default), or **Run basic check** |
-| 2 | **Chunk aggregates**: per chunk, the row count, `SUM` of every numeric column and a hash sum of every string column, computed by the source database and by Spark on the target | Detailed check: **Detailed check** on a table's row |
+| 2 | **Chunk aggregates**: per chunk, the row count, `SUM` of every numeric column, and sums of exact integer codes for every string, boolean and date column, computed by the source database and by Spark on the target | Detailed check: **Detailed check** on a table's row |
 | 3 | **Row comparison** of only the chunks that tier 2 found different | Detailed check, right after tier 2 |
 
 **Target rows** are the target's active rows. Incremental sources and snapshot CDC sources land in an SCD Type 2 table, so only rows with `__END_AT IS NULL` count. Other full loads overwrite the target, so every row counts.
@@ -28,8 +28,10 @@ For each chunk the source database returns one row (the aggregation runs on the 
 - `COUNT(*)`.
 - `SUM` of each integer and decimal column, cast to `DECIMAL(38, scale)` so it cannot overflow. Float columns are left out: their sums depend on the order rows are added in.
 - For each string column, the sum of the first 32 bits of the MD5 of its UTF-8 value: `md5` on PostgreSQL and MySQL, `HASHBYTES('MD5')` after a conversion to UTF-8 on SQL Server (2019 or later), `STANDARD_HASH` on Oracle. Spark computes the same value with `conv(substring(md5(col), 1, 8), 16, 10)`. If the source cannot hash a column (an Oracle LOB, an older SQL Server), the check retries with counts and sums only and says so in the details.
+- For each boolean column, the sum of 2 for true, 1 for false and 0 for `NULL`, so a single flip always changes it. Oracle before 23ai has no boolean type, so Oracle booleans (usually `NUMBER(1)`, summed as numbers) are covered by the numeric sums instead.
+- For each date column, the sum of its days since 1970-01-01 plus 1,000,000, and 0 for `NULL`. The offset keeps any date after year 1 apart from `NULL`.
 
-At most 64 numeric and 64 string columns are aggregated. Dates, timestamps, booleans, floats and binary columns are only compared in tier 3.
+Every aggregate is exact, so the source database and Spark always compute the same value for equal data. At most 64 columns of each kind are aggregated. **Timestamps and floats are left out on purpose:** a timestamp's numeric value depends on the time zone the source and Spark read it in, and a sum of floats depends on the order the rows are added in, so both would flag chunks whose data is equal. Timestamps, floats, binary columns and any columns past those 64 are compared only in the chunks tier 3 reads. **A change made only in such a column leaves the chunk's count, sums and hashes unchanged, so tier 2 does not flag the chunk and the check reports `MATCH`.** For example, a corrected `updated_at` with no other change goes unnoticed. A change in any other column, or an added or removed row, changes the chunk's aggregates.
 
 ### Tier 3: rows of the differing chunks
 
@@ -38,7 +40,17 @@ Source and target are different engines, so no single `EXCEPT` query can see bot
 - **With `key_columns`**, rows are matched by key. A key on only one side is *missing* or *extra*; a key on both sides with different values is *changed*.
 - **Without `key_columns`**, only whole rows can be compared (as with `EXCEPT ALL`), so a changed row counts as one missing and one extra row.
 
-Tier 3 reads at most 10 chunks, the ones with the largest count difference first. Month chunks are read with a day of margin on each side and then narrowed in Spark, so a time zone difference between the source and Spark cannot hide rows.
+When every chunk's aggregates match, tier 3 reads nothing. Otherwise it reads at most 10 chunks, the ones with the largest count difference first. A table that is one chunk (no chunk column) is read in full, or only its [range](#checking-a-range) when one is set. Month chunks are read with a day of margin on each side and then narrowed in Spark, so a time zone difference between the source and Spark cannot hide rows.
+
+### Example
+
+`dbo.orders` has 1.2 million rows: `order_id` from 1 to 400,000 with about 3 lines each, keyed by `order_id, line_id`, with `partition_column` set to `order_id`. Ingestion missed a changed `quantity` on one line.
+
+1. **Tier 2** splits `order_id` into 100 ranges of 4,000 orders, about 12,000 rows each. The source database returns 100 rows of aggregates, and Spark computes the same 100 rows on the target. They are equal everywhere except in the chunk `order_id 148001–152000`, where `sum(quantity)` differs by 2.
+2. **Tier 3** reads only that chunk from the source (`WHERE order_id >= 148001 AND order_id < 152001`), about 12,000 rows instead of 1.2 million, and joins it with the same chunk of the target on `order_id, line_id`.
+3. **The result** is `MISMATCH` with 0 missing, 0 extra and 1 changed row. The sample key is `order_id=150412, line_id=2`, and the details list the chunk with `sum(quantity)` as the aggregate that differs.
+
+A delete plus an insert in the same table leaves its row count equal, so the basic check reports `MATCH`. The detailed check still flags the chunks the two rows fall in, because their counts or hashes change.
 
 ### Status
 
