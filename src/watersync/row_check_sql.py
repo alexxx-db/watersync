@@ -62,6 +62,43 @@ def string_hash_sql(column: str, dialect: CheckDialect) -> str | None:
     return f"COALESCE({hashed}, 0)"
 
 
+# Booleans and dates are compared as exact integers, so the source and Spark always agree on them. Timestamps
+# (time zones) and floats (order-dependent sums) are left out of the chunk aggregates.
+DATE_OFFSET_DAYS = 1_000_000
+
+
+def boolean_code_sql(column: str, dialect: CheckDialect) -> str | None:
+    """2 for true, 1 for false, 0 for NULL, so summing it per chunk catches any single flip.
+
+    Spark computes the same with ``when(col, 2).when(~col, 1).otherwise(0)``. Returns None where the source
+    has no boolean type that Spark reads as one (Oracle before 23ai).
+    """
+    if dialect == "postgres":
+        return f"CASE WHEN {column} THEN 2 WHEN NOT {column} THEN 1 ELSE 0 END"
+    if dialect in ("sqlserver", "mysql"):
+        # BIT and TINYINT(1) columns.
+        return f"CASE WHEN {column} = 1 THEN 2 WHEN {column} = 0 THEN 1 ELSE 0 END"
+    return None
+
+
+def date_code_sql(column: str, dialect: CheckDialect) -> str | None:
+    """Days since 1970-01-01 plus DATE_OFFSET_DAYS, 0 for NULL; the offset keeps old dates apart from NULL.
+
+    Spark computes the same with ``coalesce(datediff(col, '1970-01-01') + DATE_OFFSET_DAYS, 0)``.
+    """
+    if dialect == "postgres":
+        days = f"({column} - DATE '1970-01-01')"
+    elif dialect == "sqlserver":
+        days = f"DATEDIFF(DAY, '1970-01-01', {column})"
+    elif dialect == "mysql":
+        days = f"DATEDIFF({column}, '1970-01-01')"
+    elif dialect == "oracle":
+        days = f"(TRUNC({column}) - DATE '1970-01-01')"
+    else:
+        return None
+    return f"COALESCE({days} + {DATE_OFFSET_DAYS}, 0)"
+
+
 def month_chunk_sql(column: str, dialect: CheckDialect) -> str:
     if dialect == "sqlserver":
         return f"(YEAR({column}) * 100 + MONTH({column}))"
@@ -144,13 +181,14 @@ def chunk_aggregate_query(
     table: str,
     chunk_sql: str,
     sums: list[tuple[str, str, int]],
-    hashes: list[tuple[str, str]],
+    codes: list[tuple[str, str]],
     where: str = "1=1",
 ) -> str:
-    """One row per chunk: ``ws_chunk_id``, ``row_count`` and an alias per sum (alias, column, scale) and hash."""
+    """One row per chunk: ``ws_chunk_id``, ``row_count``, then an alias per sum (alias, column, scale) and per
+    integer code (alias, expression): string hashes, boolean codes and date codes."""
     aggregates = ["COUNT(*) AS row_count"]
     aggregates += [f"{decimal_sum_sql(column, scale)} AS {alias}" for alias, column, scale in sums]
-    aggregates += [f"{decimal_sum_sql(expr, 0)} AS {alias}" for alias, expr in hashes]
+    aggregates += [f"{decimal_sum_sql(expr, 0)} AS {alias}" for alias, expr in codes]
     # The derived table lets GROUP BY use the alias, which SQL Server and Oracle do not allow directly.
     return (
         f"(SELECT ws_chunk_id, {', '.join(aggregates)} FROM ("

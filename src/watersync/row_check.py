@@ -13,6 +13,7 @@ from typing import Any
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
+    BooleanType,
     ByteType,
     DateType,
     DecimalType,
@@ -28,11 +29,14 @@ from pyspark.sql.types import (
 from watersync.ingestion import JdbcIngestionConfigRepository
 from watersync.models import IngestionConfig, JdbcRuntimeSettings
 from watersync.row_check_sql import (
+    DATE_OFFSET_DAYS,
     CheckDialect,
     ChunkPlan,
     RowRange,
+    boolean_code_sql,
     check_dialect,
     chunk_aggregate_query,
+    date_code_sql,
     quote_identifier,
     string_hash_sql,
 )
@@ -128,6 +132,16 @@ def spark_string_hash(name: str):
     return F.coalesce(F.conv(F.substring(F.md5(column(name)), 1, 8), 16, 10).cast("decimal(38,0)"), F.lit(0))
 
 
+def spark_boolean_code(name: str):
+    """Spark side of row_check_sql.boolean_code_sql: 2 for true, 1 for false, 0 for NULL."""
+    return F.when(column(name), F.lit(2)).when(~column(name), F.lit(1)).otherwise(F.lit(0))
+
+
+def spark_date_code(name: str):
+    """Spark side of row_check_sql.date_code_sql: days since 1970-01-01 plus DATE_OFFSET_DAYS, 0 for NULL."""
+    return F.coalesce(F.datediff(column(name), F.lit("1970-01-01").cast("date")) + F.lit(DATE_OFFSET_DAYS), F.lit(0))
+
+
 def chunk_field(config: IngestionConfig, fields: dict[str, StructField]) -> StructField | None:
     """The integer partition column, else a single integer key, else a timestamp or date watermark column."""
     candidates = [config.partition_column] + (config.key_column_list if len(config.key_column_list) == 1 else [])
@@ -159,8 +173,9 @@ class RowCheckRunner:
 
     ``basic`` is tier 1: a COUNT(*) pushed down to the source and a count of the target's active rows.
     ``detailed`` runs tiers 2 and 3. Tier 2 splits the table into chunks (ranges of an integer
-    column, or months of the watermark column) and compares per-chunk counts, numeric sums and
-    string hash sums, computed by the source database and by Spark on the target. Tier 3 reads only
+    column, or months of the watermark column) and compares per-chunk counts, numeric sums, and sums of
+    integer codes for strings (hashes), booleans and dates, computed by the source database and by Spark
+    on the target. Timestamps and floats are not aggregated. Tier 3 reads only
     the chunks that differ and compares them row by row, by key when the config has key columns.
     """
 
@@ -481,51 +496,67 @@ class RowCheckRunner:
         target,
         where: str = "1=1",
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Tier 2: per-chunk COUNT, numeric SUMs and string hash sums, from the source database and from Spark."""
+        """Tier 2: per-chunk COUNT, numeric SUMs, and sums of integer codes for strings (hashes), booleans and
+        dates, from the source database and from Spark."""
         summed = [(f, sum_scale(f)) for f in fields if sum_scale(f) is not None][:MAX_AGGREGATED_COLUMNS]
-        hashed = [f for f in fields if isinstance(f.dataType, StringType)][:MAX_AGGREGATED_COLUMNS]
-        if string_hash_sql("c", dialect) is None:
-            hashed = []
+        # (label, field, source SQL, Spark expression); each kind is skipped where the source cannot compute it.
+        kinds = [
+            ("hash", StringType, string_hash_sql, spark_string_hash),
+            ("bool", BooleanType, boolean_code_sql, spark_boolean_code),
+            ("date", DateType, date_code_sql, spark_date_code),
+        ]
+        codes = []
+        for label, data_type, source_sql, spark_expr in kinds:
+            if source_sql("c", dialect) is None:
+                continue
+            matching = [f for f in fields if isinstance(f.dataType, data_type)][:MAX_AGGREGATED_COLUMNS]
+            codes += [(label, f, source_sql, spark_expr) for f in matching]
         details: dict[str, Any] = {
             "chunking": plan.kind,
             "summed_columns": [f.name for f, _ in summed],
-            "hashed_columns": [f.name for f in hashed],
+            "hashed_columns": [f.name for label, f, _, _ in codes if label == "hash"],
+            "boolean_columns": [f.name for label, f, _, _ in codes if label == "bool"],
+            "date_columns": [f.name for label, f, _, _ in codes if label == "date"],
         }
 
-        def source_query(hashed_fields: list[StructField]) -> str:
+        def source_query(code_columns) -> str:
             return chunk_aggregate_query(
                 worker.config.source_table_name,
                 plan.source_sql(dialect),
                 [(f"s{i}", quote_identifier(f.name, dialect), scale) for i, (f, scale) in enumerate(summed)],
                 [
-                    (f"h{i}", string_hash_sql(quote_identifier(f.name, dialect), dialect))
-                    for i, f in enumerate(hashed_fields)
+                    (f"c{i}", source_sql(quote_identifier(f.name, dialect), dialect))
+                    for i, (_, f, source_sql, _) in enumerate(code_columns)
                 ],
                 where,
             )
 
         try:
-            source_rows = worker.build_jdbc_reader(source_query(hashed)).load().collect()
+            source_rows = worker.build_jdbc_reader(source_query(codes)).load().collect()
         except Exception as exc:
-            if not hashed:
+            if not codes:
                 raise
             # Some sources cannot hash every string column (Oracle LOBs, SQL Server before 2019).
             logger.warning(
-                "[CHECK]  %s — string hashing failed, retrying with counts and sums only: %s",
+                "[CHECK]  %s — hashing or encoding columns failed, retrying with counts and sums only: %s",
                 worker.config.source_table_name,
                 str(exc)[:300],
             )
-            details["note"] = f"The source could not hash string columns, so only counts and sums were compared: {str(exc)[:300]}"
-            details["hashed_columns"] = hashed = []
+            details["note"] = (
+                "The source could not hash text columns or encode boolean and date columns, so only counts and "
+                f"sums were compared: {str(exc)[:300]}"
+            )
+            details.update(hashed_columns=[], boolean_columns=[], date_columns=[])
+            codes = []
             source_rows = worker.build_jdbc_reader(source_query([])).load().collect()
 
-        metrics = ["row_count"] + [f"sum({f.name})" for f, _ in summed] + [f"hash({f.name})" for f in hashed]
+        metrics = ["row_count"] + [f"sum({f.name})" for f, _ in summed] + [f"{label}({f.name})" for label, f, _, _ in codes]
         target_rows = (
             target.groupBy(F.expr(plan.spark_sql()).alias("ws_chunk_id"))
             .agg(
                 F.count(F.lit(1)),
                 *[F.sum(column(f.name).cast(f"decimal(38,{scale})")) for f, scale in summed],
-                *[F.sum(spark_string_hash(f.name)).cast("decimal(38,0)") for f in hashed],
+                *[F.sum(spark_expr(f.name)).cast("decimal(38,0)") for _, f, _, spark_expr in codes],
             )
             .collect()
         )

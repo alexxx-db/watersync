@@ -1165,6 +1165,9 @@ type ChunkDetails = {
   chunking: 'numeric' | 'month' | 'none';
   summed_columns: string[];
   hashed_columns: string[];
+  // Results written before booleans and dates were aggregated have neither.
+  boolean_columns?: string[];
+  date_columns?: string[];
   note?: string;
   chunks: Array<{
     chunk: number | null;
@@ -1261,15 +1264,24 @@ function RowCheckDetailsDialog({ row, onClose }: { row: RowCheckRow | null; onCl
                         {chunkDetails.chunking === 'none'
                           ? 'one chunk (no integer key, partition column or timestamp watermark to split by)'
                           : `${count(row.detailed_chunk_count)} chunks: ${chunkingLabels[chunkDetails.chunking]} ${row.detailed_chunk_column}`}
-                        . Sums of{' '}
-                        <span className="font-mono">
-                          {chunkDetails.summed_columns.join(', ') || 'no numeric columns'}
-                        </span>
-                        ; hashes of{' '}
-                        <span className="font-mono">
-                          {chunkDetails.hashed_columns.join(', ') || 'no string columns'}
-                        </span>
-                        .
+                        .{' '}
+                        {(
+                          [
+                            ['sums of', chunkDetails.summed_columns],
+                            ['hashes of', chunkDetails.hashed_columns],
+                            ['true/false/null counts of', chunkDetails.boolean_columns ?? []],
+                            ['date sums of', chunkDetails.date_columns ?? []],
+                          ] as const
+                        )
+                          .filter(([, columns]) => columns.length > 0)
+                          .map(([label, columns], index) => (
+                            <span key={label}>
+                              {index > 0 && '; '}
+                              {index === 0 ? label.charAt(0).toUpperCase() + label.slice(1) : label}{' '}
+                              <span className="font-mono">{columns.join(', ')}</span>
+                            </span>
+                          ))}
+                        . Timestamps and floats are compared only in the rows of differing chunks.
                       </p>
                       {chunkDetails.note && <p className="text-xs text-muted-foreground">{chunkDetails.note}</p>}
                       {chunkDetails.chunks.length > 0 && (

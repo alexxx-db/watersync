@@ -5,11 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 
 from watersync.row_check_sql import (
+    DATE_OFFSET_DAYS,
     ChunkPlan,
     RowRange,
     parse_range_bound,
+    boolean_code_sql,
     check_dialect,
     chunk_aggregate_query,
+    date_code_sql,
     month_chunk_sql,
     quote_identifier,
     string_hash_sql,
@@ -121,6 +124,26 @@ class RowCheckSqlTest(unittest.TestCase):
         names = RowRange.parse("last_name", "string", "", "O'N")
         self.assertEqual(names.source_sql("mysql"), "`last_name` < 'O''N'")
         self.assertEqual(RowRange("id", "number").source_sql("oracle"), "1=1")
+
+
+    def test_boolean_code_per_engine(self) -> None:
+        self.assertEqual(boolean_code_sql('"active"', "postgres"), 'CASE WHEN "active" THEN 2 WHEN NOT "active" THEN 1 ELSE 0 END')
+        self.assertEqual(boolean_code_sql("[active]", "sqlserver"), "CASE WHEN [active] = 1 THEN 2 WHEN [active] = 0 THEN 1 ELSE 0 END")
+        self.assertIn("`active` = 1", boolean_code_sql("`active`", "mysql"))
+        # Oracle before 23ai has no BOOLEAN that Spark reads as one.
+        self.assertIsNone(boolean_code_sql('"ACTIVE"', "oracle"))
+        self.assertIsNone(boolean_code_sql("active", "unknown"))
+
+    def test_date_code_per_engine(self) -> None:
+        self.assertEqual(date_code_sql('"d"', "postgres"), f"COALESCE((\"d\" - DATE '1970-01-01') + {DATE_OFFSET_DAYS}, 0)")
+        self.assertEqual(date_code_sql("[d]", "sqlserver"), f"COALESCE(DATEDIFF(DAY, '1970-01-01', [d]) + {DATE_OFFSET_DAYS}, 0)")
+        self.assertIn("DATEDIFF(`d`, '1970-01-01')", date_code_sql("`d`", "mysql"))
+        self.assertIn("TRUNC(\"D\") - DATE '1970-01-01'", date_code_sql('"D"', "oracle"))
+        self.assertIsNone(date_code_sql("d", "unknown"))
+
+    def test_date_offset_keeps_old_dates_apart_from_null(self) -> None:
+        # 0001-01-01 is 719,162 days before 1970-01-01; with the offset it is still above the NULL code 0.
+        self.assertGreater(DATE_OFFSET_DAYS - 719_162, 0)
 
 
 if __name__ == "__main__":
