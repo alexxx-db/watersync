@@ -80,6 +80,129 @@ declare module '@databricks/appkit-ui/react' {
         enabled_incremental_source_count: number;
       }>;
     };
+    row_check_daily: {
+      name: 'row_check_daily';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        days: IntParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        tables: StringParam;
+        top: IntParam;
+        level: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        day: string;
+        ingestion_group: string;
+        source_table_name: string;
+        is_other: boolean | string;
+        entity_count: number | string;
+        source_count: number | string | null;
+        target_count: number | string | null;
+        rows_ingested: number | string | null;
+        count_diff: number | string | null;
+      }>;
+    };
+    row_check_table_options: {
+      name: 'row_check_table_options';
+      parameters: {
+        config_table: StringParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{ ingestion_group: string; source_table_name: string }>;
+    };
+    row_check_results: {
+      name: 'row_check_results';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        tables: StringParam;
+        status: StringParam;
+        page_size: IntParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        ingestion_group: string;
+        source_table_name: string;
+        target_table_fqn: string;
+        key_columns: string | null;
+        basic_checked_at: string | null;
+        basic_source_count: number | null;
+        basic_target_count: number | null;
+        basic_count_diff: number | null;
+        basic_status: string | null;
+        basic_error: string | null;
+        basic_checked_range: string | null;
+        detailed_checked_at: string | null;
+        detailed_source_count: number | null;
+        detailed_target_count: number | null;
+        detailed_missing_in_target: number | null;
+        detailed_extra_in_target: number | null;
+        detailed_mismatched_rows: number | null;
+        detailed_compared_columns: string | null;
+        // JSON columns: the analytics plugin returns them parsed (see lib/jsonColumn.ts).
+        detailed_sample_keys: unknown;
+        detailed_status: string | null;
+        detailed_error: string | null;
+        detailed_duration_ms: number | null;
+        detailed_chunk_column: string | null;
+        detailed_chunk_count: number | null;
+        detailed_mismatched_chunks: number | null;
+        detailed_drilled_chunks: number | null;
+        detailed_chunk_details: unknown;
+        detailed_checked_range: string | null;
+        severity: number | string;
+        total_count: number | string;
+      }>;
+    };
+    row_check_summary: {
+      name: 'row_check_summary';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        ingestion_group: StringParam;
+        search: StringParam;
+        tables: StringParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        table_count: number | string;
+        group_count: number | string;
+        match_count: number | string;
+        mismatch_count: number | string;
+        error_count: number | string;
+        last_checked_at: string | null;
+      }>;
+    };
+    row_check_groups: {
+      name: 'row_check_groups';
+      parameters: {
+        config_table: StringParam;
+        row_check_table: StringParam;
+        status: StringParam;
+        page_size: IntParam;
+        refresh_token: IntParam;
+      };
+      result: Array<{
+        ingestion_group: string;
+        table_count: number | string;
+        match_count: number | string;
+        mismatch_count: number | string;
+        error_count: number | string;
+        unchecked_count: number | string;
+        source_count: number | string | null;
+        target_count: number | string | null;
+        rows_out_of_sync: number | string | null;
+        last_checked_at: string | null;
+        total_count: number | string;
+      }>;
+    };
   }
 }
 

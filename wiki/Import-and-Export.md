@@ -308,7 +308,7 @@ empty or omitted, so a file can carry only tables or only job settings. A file h
 ### `configs[]`
 
 Each entry is one row of `jdbc_ingestion_config`. See
-[Configuration Table](Configuration-Table.md) for the meaning of each column.
+[Configuration Table](Configuration-Table) for the meaning of each column.
 
 | Field                       | Column                        | Type                    | Notes                                                             |
 | --------------------------- | ----------------------------- | ----------------------- | ----------------------------------------------------------------- |
